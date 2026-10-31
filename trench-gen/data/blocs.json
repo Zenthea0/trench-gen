@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "blocs": [
+    {
+      "id": "vide", "nom": "Plat",
+      "cotes": { "N": "S", "E": "S", "S": "S", "O": "S" },
+      "liaisons": [],
+      "centre": false, "fin": null, "quantite": 8
+    },
+    {
+      "id": "droit", "nom": "Droit",
+      "cotes": { "N": "T", "E": "S", "S": "T", "O": "S" },
+      "liaisons": [["N", "S"]],
+      "centre": true, "fin": null, "quantite": 12
+    },
+    {
+      "id": "coude", "nom": "Coude",
+      "cotes": { "N": "S", "E": "S", "S": "T", "O": "T" },
+      "liaisons": [["S", "O"]],
+      "centre": true, "fin": null, "quantite": 10
+    },
+    {
+      "id": "te", "nom": "Té",
+      "cotes": { "N": "T", "E": "S", "S": "T", "O": "T" },
+      "liaisons": [["N", "S", "O"]],
+      "centre": true, "fin": null, "quantite": 6
+    },
+    {
+      "id": "croix", "nom": "Croix",
+      "cotes": { "N": "T", "E": "T", "S": "T", "O": "T" },
+      "liaisons": [["N", "E", "S", "O"]],
+      "centre": true, "fin": null, "quantite": 3
+    },
+    {
+      "id": "impasse", "nom": "Impasse",
+      "cotes": { "N": "S", "E": "S", "S": "T", "O": "S" },
+      "liaisons": [["S"]],
+      "centre": true, "fin": "interdite", "quantite": 0
+    },
+    {
+      "id": "rampe", "nom": "Rampe de sortie",
+      "cotes": { "N": "S", "E": "S", "S": "T", "O": "S" },
+      "liaisons": [["S"]],
+      "centre": true, "fin": "autorisee", "quantite": 4
+    },
+    {
+      "id": "coude_decale", "nom": "Coude décalé",
+      "cotes": { "N": "S", "E": "S", "S": "T", "O": "T" },
+      "liaisons": [["S", "O"]],
+      "centre": false, "fin": null, "quantite": 4
+    },
+    {
+      "id": "double_coude_decale", "nom": "Double coude décalé",
+      "cotes": { "N": "T", "E": "T", "S": "T", "O": "T" },
+      "liaisons": [["S", "O"], ["N", "E"]],
+      "centre": false, "fin": null, "quantite": 3
+    }
+  ]
+}
