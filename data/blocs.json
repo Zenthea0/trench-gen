@@ -35,13 +35,13 @@
       "id": "impasse", "nom": "Impasse",
       "cotes": { "N": "S", "E": "S", "S": "T", "O": "S" },
       "liaisons": [["S"]],
-      "centre": true, "fin": "interdite", "quantite": 0
+      "centre": true, "fin": "autorisee", "quantite": 2
     },
     {
       "id": "rampe", "nom": "Rampe de sortie",
       "cotes": { "N": "S", "E": "S", "S": "T", "O": "S" },
       "liaisons": [["S"]],
-      "centre": true, "fin": "autorisee", "quantite": 4
+      "centre": true, "fin": "autorisee", "pente": true, "quantite": 4
     },
     {
       "id": "coude_decale", "nom": "Coude décalé",

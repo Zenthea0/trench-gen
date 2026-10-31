@@ -40,13 +40,16 @@ function coinEntre(a: NomCote, b: NomCote): [number, number] | null {
 }
 
 function trace(groupe: NomCote[], centre: boolean): { d: string; centreCarre: boolean } {
-  // Liaison décalée : une courbe qui contourne le centre, entre deux côtés voisins.
+  // Liaison décalée : un quart de cercle centré sur le coin qui sépare les deux côtés.
+  // Rayon 50 : l'arc part du milieu d'un côté et arrive au milieu de l'autre, à angle droit,
+  // donc il se raccorde exactement à une tranchée droite du bloc voisin.
   if (!centre && groupe.length === 2) {
     const coin = coinEntre(groupe[0], groupe[1]);
     if (coin) {
       const [x1, y1] = MILIEU[groupe[0]];
       const [x2, y2] = MILIEU[groupe[1]];
-      return { d: `M${x1} ${y1} Q${coin[0]} ${coin[1]} ${x2} ${y2}`, centreCarre: false };
+      const produit = (x1 - coin[0]) * (y2 - coin[1]) - (y1 - coin[1]) * (x2 - coin[0]);
+      return { d: `M${x1} ${y1} A50 50 0 0 ${produit > 0 ? 1 : 0} ${x2} ${y2}`, centreCarre: false };
     }
   }
   // Tranchée par le centre : un segment depuis le milieu de chaque côté.
@@ -62,7 +65,7 @@ function trace(groupe: NomCote[], centre: boolean): { d: string; centreCarre: bo
 /** Contenu SVG d'un bloc, dans un repère 0..100, avant rotation. */
 function ContenuBloc({ bloc }: { bloc: BlocDef }) {
   const traces = bloc.liaisons.map((g) => ({ groupe: g, ...trace(g, bloc.centre) }));
-  const rampes = bloc.liaisons.filter((g) => g.length === 1 && bloc.fin === 'autorisee');
+  const rampes = bloc.pente ? bloc.liaisons.filter((g) => g.length === 1) : [];
 
   const couche = (largeur: number, couleur: string, cle: string): ReactNode => (
     <g key={cle}>
@@ -105,11 +108,9 @@ function ContenuBloc({ bloc }: { bloc: BlocDef }) {
       {couche(LARGEUR_FOND, COULEURS.fond, 'fond')}
       {/* planches de fond de tranchée */}
       <g stroke={COULEURS.planche} strokeWidth="1.6" opacity="0.7">
-        {traces
-          .filter((t) => t.centreCarre)
-          .map((t, i) => (
-            <path key={i} d={t.d} fill="none" strokeWidth={LARGEUR_FOND - 8} strokeDasharray="1.6 8" />
-          ))}
+        {traces.map((t, i) => (
+          <path key={i} d={t.d} fill="none" strokeWidth={LARGEUR_FOND - 8} strokeDasharray="1.6 8" />
+        ))}
       </g>
     </>
   );

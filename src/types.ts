@@ -20,12 +20,14 @@ export interface BlocDef {
   /** true si la tranchée passe par le centre (information visuelle, sans effet sur la génération). */
   centre: boolean;
   /**
-   * Règle sur les groupes d'un seul côté :
-   *  - null         : un groupe d'un seul côté est interdit (le bloc n'est jamais posé)
-   *  - "interdite"  : cul-de-sac, jamais posé
-   *  - "autorisee"  : fin de tranchée autorisée (rampe de sortie)
+   * Règle sur les groupes d'un seul côté (tranchée qui se termine dans le bloc) :
+   *  - null ou "interdite" : un groupe d'un seul côté interdit le bloc (il n'est jamais posé)
+   *  - "autorisee"         : le bloc peut être posé ; son unique ouverture suit les mêmes règles
+   *                          de raccord que tous les autres côtés (impasse, rampe de sortie)
    */
   fin: 'interdite' | 'autorisee' | null;
+  /** true si le bloc comporte une pente pour sortir de la tranchée (dessin uniquement). */
+  pente?: boolean;
   /** Nombre d'exemplaires possédés (saisi par l'utilisateur). */
   quantite: number;
 }

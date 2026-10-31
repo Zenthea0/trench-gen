@@ -38,7 +38,7 @@ export function tuile(bloc: BlocDef, rotation: number): string[] {
     } else {
       t[1][1] = '#';
     }
-    if (g.length === 1 && bloc.fin === 'autorisee') {
+    if (g.length === 1 && bloc.pente) {
       const opp = (g[0] + 2) % 4;
       t[POS_COTE[opp][0]][POS_COTE[opp][1]] = '~';
     }

@@ -40,11 +40,13 @@ export function charger(): Etat {
     const brut = localStorage.getItem(CLE);
     if (!brut) return defaut;
     const lu = JSON.parse(brut) as Partial<Etat>;
+    const personnalise = lu.personnalise === true;
     return {
+      // Tant que l'utilisateur n'a rien saisi, les quantités d'exemple suivent les mises à jour.
       // Les types de blocs ajoutés plus tard dans blocs.json reprennent leur quantité par défaut.
-      quantites: { ...defaut.quantites, ...(lu.quantites ?? {}) },
+      quantites: personnalise ? { ...defaut.quantites, ...(lu.quantites ?? {}) } : defaut.quantites,
       reglages: { ...REGLAGES_DEFAUT, ...(lu.reglages ?? {}) },
-      personnalise: lu.personnalise === true,
+      personnalise,
     };
   } catch {
     return defaut;

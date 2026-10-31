@@ -46,7 +46,8 @@ Tout se passe dans `data/blocs.json`, sans toucher au code :
 - `cotes` : `T` (tranchée) ou `S` (surface) pour chaque côté, dans l'orientation de référence.
 - `liaisons` : groupes de côtés reliés entre eux à l'intérieur du bloc. Chaque côté `T` doit appartenir à exactement un groupe.
 - `centre` : `false` si la tranchée contourne le centre (dessin en courbe).
-- `fin` : `"autorisee"` pour un bloc qui peut terminer une tranchée (rampe), `"interdite"` ou `null` sinon.
+- `fin` : `"autorisee"` pour un bloc dont une tranchée se termine à l'intérieur (impasse, rampe) : son unique ouverture suit les mêmes règles de raccord que les autres côtés. `"interdite"` ou `null` : le bloc n'est jamais posé s'il a un tel groupe.
+- `pente` (optionnel) : `true` si le bloc comporte une pente pour sortir de la tranchée (dessin uniquement).
 
 ## Structure
 

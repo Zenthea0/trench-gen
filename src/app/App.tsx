@@ -31,12 +31,14 @@ function conseil(raison: string): string {
 }
 
 function descriptionBloc(b: BlocDef): string {
-  if (!estUtilisable(b)) return 'Cul-de-sac : jamais posé';
+  if (!estUtilisable(b)) return 'Jamais posé (fin de tranchée interdite)';
   if (b.liaisons.length === 0) return 'Terrain sans tranchée';
-  if (b.fin === 'autorisee') return 'Sortie de tranchée (pente)';
-  if (b.liaisons.length > 1) return `${b.liaisons.length} tranchées indépendantes, décalées`;
-  const n = b.liaisons[0].length;
-  return b.centre ? `${n} ouvertures` : `Tranchée décalée, ${n} ouvertures`;
+  if (b.pente) return 'Sortie de tranchée (pente)';
+  if (b.liaisons.some((g) => g.length === 1)) return 'Fin de tranchée (impasse)';
+  if (!b.centre) {
+    return b.liaisons.length > 1 ? `${b.liaisons.length} tranchées en arc, indépendantes` : 'Tranchée en arc dans un coin';
+  }
+  return `${b.liaisons[0].length} ouvertures`;
 }
 
 function Stepper(props: { valeur: number; min?: number; max?: number; onChange: (v: number) => void; etiquette: string }) {

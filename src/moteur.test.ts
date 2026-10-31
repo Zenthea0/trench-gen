@@ -19,7 +19,7 @@ test('variantes : rotations dédoublonnées, impasse exclue', () => {
   assert.equal(par('rampe'), 4);
   assert.equal(par('coude_decale'), 4);
   assert.equal(par('double_coude_decale'), 2);
-  assert.equal(par('impasse'), 0);
+  assert.equal(par('impasse'), 4);
 });
 
 test('validation : bloc incohérent refusé', () => {
@@ -73,4 +73,19 @@ test('le vérificateur détecte une grille invalide', () => {
   ];
   const rap = verifier(grille, blocs, { lignes: 2, colonnes: 2, sortieBord: false, unSeulReseau: true });
   assert.ok(rap.erreurs.length > 0);
+});
+
+test('impasse : posable comme les autres blocs, et jamais sans raccord', () => {
+  const stock = appliquerStock(blocs, 'vide=10,droit=20,coude=20,te=4,impasse=10,rampe=0,croix=0,coude_decale=0,double_coude_decale=0');
+  const options: Options = { ...OPTIONS_DEFAUT, tempsMaxMs: 3000 };
+  let posees = 0;
+  for (let graine = 1; graine <= 30; graine++) {
+    const r = generer(stock, { ...options, graine });
+    assert.ok(r.ok, `échec graine ${graine}`);
+    if (!r.ok) continue;
+    const rap = verifier(r.grille, stock, options);
+    assert.deepEqual(rap.erreurs, [], `graine ${graine}`);
+    posees += rap.utilisation['impasse'] ?? 0;
+  }
+  assert.ok(posees > 0, "l'impasse n'est jamais posée");
 });

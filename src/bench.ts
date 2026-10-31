@@ -36,8 +36,8 @@ for (const [l, c] of [[4, 4], [6, 6], [8, 8], [10, 10]] as const) {
     }
   }
 }
-scenarios.push({ nom: '6×6 stock par défaut (50 blocs) bord:oui réseau:un', lignes: 6, colonnes: 6, sortieBord: true, unSeulReseau: true, stock: 'defaut' });
-scenarios.push({ nom: '6×6 stock par défaut (50 blocs) bord:non réseau:un', lignes: 6, colonnes: 6, sortieBord: false, unSeulReseau: true, stock: 'defaut' });
+scenarios.push({ nom: '6×6 stock par défaut bord:oui réseau:un', lignes: 6, colonnes: 6, sortieBord: true, unSeulReseau: true, stock: 'defaut' });
+scenarios.push({ nom: '6×6 stock par défaut bord:non réseau:un', lignes: 6, colonnes: 6, sortieBord: false, unSeulReseau: true, stock: 'defaut' });
 
 const base = chargerBlocs();
 const pad = (s: string | number, n: number) => String(s).padEnd(n);
