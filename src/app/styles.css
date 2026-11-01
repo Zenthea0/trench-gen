@@ -405,6 +405,112 @@ input:focus-visible {
   max-width: 90vw;
 }
 
+/* Avertissements de règles non respectées */
+.bandeau.avertissement {
+  background: #fff1e6;
+  border: 1px solid #f4b183;
+  color: #7a2e0b;
+  margin-top: 10px;
+}
+.bandeau.avertissement ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+.bandeau.avertissement li + li {
+  margin-top: 4px;
+}
+
+/* Sélection et édition d'un bloc */
+.barre-selection {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 10px 0;
+  padding: 10px 12px;
+  background: #fff4ec;
+  border: 1.5px solid var(--accent);
+  border-radius: var(--rayon);
+}
+.barre-selection > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.barre-selection .secondaire {
+  flex: none;
+  min-height: 44px;
+}
+.edition {
+  margin: 10px 0;
+  padding: 12px;
+  background: var(--carte);
+  border: 1.5px solid var(--accent);
+  border-radius: var(--rayon);
+}
+.edition-tete {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.edition-titre {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.edition-rotation {
+  display: flex;
+  gap: 10px;
+  margin: 12px 0;
+}
+.edition-rotation button {
+  flex: 1;
+}
+.titre-choix {
+  font-weight: 700;
+  font-size: 0.9rem;
+  margin-bottom: 6px;
+}
+.choix-types {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+.choix-types button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+  border: 2px solid var(--ligne);
+  border-radius: var(--rayon);
+  background: #fff;
+  cursor: pointer;
+}
+.choix-types button[aria-checked='true'] {
+  border-color: var(--accent);
+  background: #fff4ec;
+}
+.choix-types .nom {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.15;
+}
+.choix-types small {
+  font-size: 0.75rem;
+  text-align: center;
+}
+.choix-types small.epuise,
+.montage .compte.depasse,
+.montage .compte.depasse small {
+  color: var(--ko);
+  font-weight: 700;
+}
+.edition .actions {
+  margin-bottom: 0;
+}
+
 @media (min-width: 760px) {
   .contenu {
     padding-left: 24px;

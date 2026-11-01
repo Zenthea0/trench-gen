@@ -31,7 +31,7 @@ const html = renderToStaticMarkup(
     <body style={{ margin: 16, background: '#f3ead8' }}>
       {planche}
       <div style={{ maxWidth: 760 }}>
-        <GrilleSvg grille={res.grille} blocs={blocs} selection={{ l: 2, c: 3 }} />
+        <GrilleSvg grille={res.grille} blocs={blocs} selection={new Set(['2,3', '0,1'])} conflits={new Set(['3,3', '3,4'])} />
       </div>
     </body>
   </html>,

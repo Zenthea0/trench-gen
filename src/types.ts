@@ -50,6 +50,8 @@ export interface Variante {
   /** groupeDeCote[d] = indice du groupe contenant le côté d, ou -1. */
   groupeDeCote: number[];
   fin: BlocDef['fin'];
+  /** true si le bloc comporte une rampe de sortie (la tranchée remonte à la surface). */
+  pente: boolean;
   /** true si aucun côté n'est une tranchée (bloc plat). */
   vide: boolean;
   signature: string;

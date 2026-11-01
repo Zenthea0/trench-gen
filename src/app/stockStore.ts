@@ -9,6 +9,8 @@ export interface Reglages {
   colonnes: number;
   sortieBord: boolean;
   unSeulReseau: boolean;
+  /** Aucune tranchée complètement fermée : chaque réseau a une rampe ou une ouverture sur le bord. */
+  exigerSortie: boolean;
   quadrillage: boolean;
 }
 
@@ -25,6 +27,7 @@ export const REGLAGES_DEFAUT: Reglages = {
   colonnes: 6,
   sortieBord: true,
   unSeulReseau: true,
+  exigerSortie: true,
   quadrillage: true,
 };
 

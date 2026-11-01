@@ -63,9 +63,23 @@ export function varianteDe(bloc: BlocDef, rotation: number, typeIndex = 0): Vari
     groupes,
     groupeDeCote,
     fin: bloc.fin,
+    pente: bloc.pente === true,
     vide: !cotes.some(Boolean),
     signature,
   };
+}
+
+/**
+ * Prochaine rotation qui change réellement l'aspect du bloc : saute les orientations identiques
+ * (un bloc « droit » n'a que 2 aspects, une croix un seul). sens : +1 = horaire, -1 = anti-horaire.
+ */
+export function rotationSuivante(bloc: BlocDef, rotation: number, sens: 1 | -1): number {
+  const actuelle = varianteDe(bloc, rotation).signature;
+  for (let k = 1; k <= 3; k++) {
+    const r = (((rotation + sens * k) % 4) + 4) % 4;
+    if (varianteDe(bloc, r).signature !== actuelle) return r;
+  }
+  return ((rotation % 4) + 4) % 4;
 }
 
 export interface TypeUtilisable {

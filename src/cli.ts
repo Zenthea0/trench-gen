@@ -12,7 +12,8 @@ const AIDE = `Usage : npm run generer -- [options]
   --graine N         graine aléatoire (défaut ${OPTIONS_DEFAUT.graine})
   --bord oui|non     une tranchée peut-elle sortir sur le bord de table ? (défaut oui)
   --reseaux un|plusieurs   un seul réseau connexe ou plusieurs (défaut un)
-  --densite 0..1     tendance à poser des tranchées plutôt que des blocs plats (défaut ${OPTIONS_DEFAUT.densite})
+  --sortie-requise oui|non   chaque réseau doit avoir une rampe ou une ouverture sur le bord (défaut oui)
+  --densite 0..1    tendance à poser des tranchées plutôt que des blocs plats (défaut ${OPTIONS_DEFAUT.densite})
   --min-tranchee N   nombre minimal de cases contenant une tranchée (défaut 0)
   --temps MS         budget de temps en ms (défaut ${OPTIONS_DEFAUT.tempsMaxMs})
   --stock "id=n,id=n"  remplace les quantités de certains blocs (ex : "droit=5,croix=0")
@@ -70,6 +71,7 @@ function principal() {
     minBlocsTranchee: num('min-tranchee', 0),
     sortieBord: args.bord !== 'non',
     unSeulReseau: args.reseaux !== 'plusieurs',
+    exigerSortie: args['sortie-requise'] !== 'non',
   };
 
   let blocs = chargerBlocs(typeof args.blocs === 'string' ? args.blocs : undefined);

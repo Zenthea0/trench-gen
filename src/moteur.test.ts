@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { chargerBlocs, appliquerStock } from './cli.js';
-import { construireVariantes, validerBloc } from './blocs.js';
+import { construireVariantes, rotationSuivante, validerBloc } from './blocs.js';
 import { generer, OPTIONS_DEFAUT, type Options } from './generateur.js';
 import { verifier } from './verificateur.js';
 import type { BlocDef } from './types.js';
@@ -88,4 +88,70 @@ test('impasse : posable comme les autres blocs, et jamais sans raccord', () => {
     posees += rap.utilisation['impasse'] ?? 0;
   }
   assert.ok(posees > 0, "l'impasse n'est jamais posée");
+});
+
+test('réseau fermé : détecté par le vérificateur, et seulement quand la règle est active', () => {
+  // Une boucle de 4 coudes, sans rampe ni ouverture sur le bord.
+  const boucle = [
+    [{ typeId: 'coude', rotation: 3 }, { typeId: 'coude', rotation: 0 }],
+    [{ typeId: 'coude', rotation: 2 }, { typeId: 'coude', rotation: 1 }],
+  ];
+  const base = { lignes: 2, colonnes: 2, sortieBord: false, unSeulReseau: true };
+  assert.deepEqual(verifier(boucle, blocs, { ...base, exigerSortie: false }).erreurs, []);
+  const avec = verifier(boucle, blocs, { ...base, exigerSortie: true });
+  assert.equal(avec.erreurs.length, 1);
+  assert.match(avec.erreurs[0], /fermé/);
+  assert.equal(avec.conflits[0].cases.length, 4);
+});
+
+test('réseau fermé : impossible à satisfaire sans rampe ni bord ouvert', () => {
+  const stock = appliquerStock(
+    blocs,
+    'vide=0,droit=20,coude=20,te=10,croix=10,rampe=0,impasse=0,coude_decale=0,double_coude_decale=0',
+  );
+  const r = generer(stock, { lignes: 3, colonnes: 3, sortieBord: false, tempsMaxMs: 8000 });
+  assert.ok(!r.ok);
+  if (!r.ok) assert.match(r.raison, /Aucune configuration possible/);
+});
+
+test('blocs figés : conservés exactement après régénération', () => {
+  const options: Options = { ...OPTIONS_DEFAUT, tempsMaxMs: 3000 };
+  for (let graine = 1; graine <= 15; graine++) {
+    const base = generer(blocs, { ...options, graine });
+    assert.ok(base.ok, `base graine ${graine}`);
+    if (!base.ok) continue;
+    const fixes = [[0, 0], [1, 3], [2, 2], [4, 5], [5, 1]].map(([l, c]) => ({ l, c, ...base.grille[l][c] }));
+    const r = generer(blocs, { ...options, graine: graine + 1000, fixes });
+    assert.ok(r.ok, `régénération graine ${graine} : ${r.ok ? '' : r.raison}`);
+    if (!r.ok) continue;
+    for (const f of fixes) assert.deepEqual(r.grille[f.l][f.c], { typeId: f.typeId, rotation: f.rotation });
+    assert.deepEqual(verifier(r.grille, blocs, options).erreurs, [], `graine ${graine}`);
+  }
+});
+
+test('blocs figés : conflits refusés avec un message clair', () => {
+  const incompatibles = [
+    { l: 0, c: 0, typeId: 'droit', rotation: 1 }, // tranchée vers l'est
+    { l: 0, c: 1, typeId: 'vide', rotation: 0 }, // surface à l'ouest
+  ];
+  const a = generer(blocs, { fixes: incompatibles });
+  assert.ok(!a.ok);
+  if (!a.ok) assert.match(a.raison, /ne se raccordent pas/);
+
+  const trop = Array.from({ length: 13 }, (_, i) => ({ l: Math.floor(i / 6), c: i % 6, typeId: 'droit', rotation: 0 }));
+  const b = generer(blocs, { fixes: trop });
+  assert.ok(!b.ok);
+  if (!b.ok) assert.match(b.raison, /dépassent le stock/);
+
+  const bord = generer(blocs, { sortieBord: false, fixes: [{ l: 0, c: 0, typeId: 'droit', rotation: 0 }] });
+  assert.ok(!bord.ok);
+  if (!bord.ok) assert.match(bord.raison, /bord de la table/);
+});
+
+test('rotationSuivante : saute les orientations identiques', () => {
+  const bloc = (id: string) => blocs.find((b) => b.id === id)!;
+  assert.equal(rotationSuivante(bloc('droit'), 0, 1), 1);
+  assert.equal(rotationSuivante(bloc('droit'), 1, 1), 2);
+  assert.equal(rotationSuivante(bloc('croix'), 2, 1), 2);
+  assert.equal(rotationSuivante(bloc('coude'), 0, -1), 3);
 });

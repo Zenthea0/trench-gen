@@ -1,9 +1,12 @@
 import type { BlocDef, NomCote } from './types.js';
 import type { Grille, Options } from './generateur.js';
+import { nomCase } from './cases.js';
 
 /**
  * Vérificateur INDÉPENDANT du moteur : il ne partage aucun code de rotation ni de recherche avec
- * generateur.ts / blocs.ts. Il sert de filet de sécurité pour les tests et pour l'application.
+ * generateur.ts / blocs.ts. Il sert de filet de sécurité pour les tests, et à l'application pour
+ * signaler en direct les conflits après une modification manuelle (chaque conflit indique les
+ * cases concernées pour pouvoir les mettre en évidence sur la carte).
  */
 
 const NOMS: NomCote[] = ['N', 'E', 'S', 'O'];
@@ -25,8 +28,16 @@ function orienter(bloc: BlocDef, rotation: number) {
   return { cotes, groupes };
 }
 
+export interface Conflit {
+  message: string;
+  /** Cases (ligne, colonne) à mettre en évidence. */
+  cases: [number, number][];
+}
+
 export interface Rapport {
+  /** Messages des conflits (même ordre que `conflits`). */
   erreurs: string[];
+  conflits: Conflit[];
   /** Nombre de réseaux de tranchée distincts. */
   reseaux: number;
   /** Utilisation du stock par type. */
@@ -38,31 +49,41 @@ export function verifier(
   blocs: BlocDef[],
   options: Pick<Options, 'lignes' | 'colonnes' | 'sortieBord' | 'unSeulReseau'> & Partial<Options>,
 ): Rapport {
-  const erreurs: string[] = [];
+  const conflits: Conflit[] = [];
+  const ajouter = (message: string, cases: [number, number][]) => conflits.push({ message, cases });
+  const rapport = (reseaux: number): Rapport => ({
+    conflits,
+    erreurs: conflits.map((c) => c.message),
+    reseaux,
+    utilisation,
+  });
   const parId = new Map(blocs.map((b) => [b.id, b]));
   const utilisation: Record<string, number> = {};
+  const casesParType = new Map<string, [number, number][]>();
 
   if (grille.length !== options.lignes || grille.some((l) => l.length !== options.colonnes)) {
-    erreurs.push(`Dimensions de grille incorrectes (attendu ${options.lignes}×${options.colonnes}).`);
-    return { erreurs, reseaux: 0, utilisation };
+    ajouter(`Dimensions de grille incorrectes (attendu ${options.lignes}×${options.colonnes}).`, []);
+    return rapport(0);
   }
 
   const orient = grille.map((ligne, l) =>
     ligne.map((cel, c) => {
       const bloc = parId.get(cel.typeId);
       if (!bloc) {
-        erreurs.push(`Case (${l},${c}) : type inconnu « ${cel.typeId} ».`);
+        ajouter(`Case ${nomCase(l, c)} : type inconnu « ${cel.typeId} ».`, [[l, c]]);
         return null;
       }
       if (!Number.isInteger(cel.rotation) || cel.rotation < 0 || cel.rotation > 3) {
-        erreurs.push(`Case (${l},${c}) : rotation invalide ${cel.rotation}.`);
+        ajouter(`Case ${nomCase(l, c)} : rotation invalide ${cel.rotation}.`, [[l, c]]);
         return null;
       }
       utilisation[bloc.id] = (utilisation[bloc.id] ?? 0) + 1;
-      // Un groupe d'un seul côté est un cul-de-sac, sauf si la fin est autorisée.
+      if (!casesParType.has(bloc.id)) casesParType.set(bloc.id, []);
+      casesParType.get(bloc.id)!.push([l, c]);
+      // Un groupe d'un seul côté est une fin de tranchée : permise seulement si le bloc l'autorise.
       for (const g of bloc.liaisons) {
         if (g.length < 2 && bloc.fin !== 'autorisee') {
-          erreurs.push(`Case (${l},${c}) : « ${bloc.id} » forme un cul-de-sac interdit.`);
+          ajouter(`Le bloc ${nomCase(l, c)} (${bloc.nom}) forme un cul-de-sac interdit.`, [[l, c]]);
         }
       }
       return { bloc, ...orienter(bloc, cel.rotation) };
@@ -71,11 +92,13 @@ export function verifier(
 
   // Stock
   for (const [id, k] of Object.entries(utilisation)) {
-    const q = parId.get(id)!.quantite;
-    if (k > q) erreurs.push(`Stock dépassé pour « ${id} » : ${k} posés pour ${q} disponibles.`);
+    const bloc = parId.get(id)!;
+    if (k > bloc.quantite) {
+      ajouter(`Stock dépassé : « ${bloc.nom} » (${k} posés pour ${bloc.quantite} disponibles).`, casesParType.get(id) ?? []);
+    }
   }
 
-  // Compatibilité des côtés et bords
+  // Compatibilité des côtés voisins (une seule fois par paire) et bords de table
   for (let l = 0; l < options.lignes; l++) {
     for (let c = 0; c < options.colonnes; c++) {
       const a = orient[l][c];
@@ -87,14 +110,20 @@ export function verifier(
         const dehors = nl < 0 || nl >= options.lignes || nc < 0 || nc >= options.colonnes;
         if (dehors) {
           if (a.cotes[d] === 'T' && !options.sortieBord) {
-            erreurs.push(`Case (${l},${c}) : tranchée vers le bord de table (${d}) alors que c'est interdit.`);
+            ajouter(`Le bloc ${nomCase(l, c)} ouvre une tranchée sur le bord de la table, ce qui est désactivé.`, [[l, c]]);
           }
           continue;
         }
+        if (d !== 'E' && d !== 'S') continue;
         const b = orient[nl][nc];
         if (!b) continue;
-        if (a.cotes[d] !== b.cotes[OPPOSE[d]]) {
-          erreurs.push(`Cases (${l},${c}) et (${nl},${nc}) : côtés incompatibles (${a.cotes[d]} contre ${b.cotes[OPPOSE[d]]}).`);
+        const cotéB = b.cotes[OPPOSE[d]];
+        if (a.cotes[d] !== cotéB) {
+          const mot = (t: 'T' | 'S') => (t === 'T' ? 'tranchée' : 'surface');
+          ajouter(`Les blocs ${nomCase(l, c)} et ${nomCase(nl, nc)} ne se raccordent pas (${mot(a.cotes[d])} contre ${mot(cotéB)}).`, [
+            [l, c],
+            [nl, nc],
+          ]);
         }
       }
     }
@@ -103,7 +132,7 @@ export function verifier(
   // Réseaux : graphe de groupes, parcours en largeur
   const cle = (l: number, c: number, g: number) => `${l},${c},${g}`;
   const adj = new Map<string, string[]>();
-  const ajouter = (x: string, y: string) => {
+  const ajouterArete = (x: string, y: string) => {
     if (!adj.has(x)) adj.set(x, []);
     adj.get(x)!.push(y);
   };
@@ -123,20 +152,21 @@ export function verifier(
           const b = orient[nl][nc];
           if (!b) continue;
           const gb = b.groupes.findIndex((gr) => gr.includes(OPPOSE[d]));
-          if (gb >= 0) ajouter(cle(l, c, g), cle(nl, nc, gb));
+          if (gb >= 0) ajouterArete(cle(l, c, g), cle(nl, nc, gb));
         }
       });
     }
   }
   const vus = new Set<string>();
-  let reseaux = 0;
+  const composantes: string[][] = [];
   for (const depart of adj.keys()) {
     if (vus.has(depart)) continue;
-    reseaux++;
+    const membres: string[] = [];
     const file = [depart];
     vus.add(depart);
     while (file.length) {
       const x = file.shift()!;
+      membres.push(x);
       for (const y of adj.get(x) ?? []) {
         if (!vus.has(y)) {
           vus.add(y);
@@ -144,17 +174,58 @@ export function verifier(
         }
       }
     }
+    composantes.push(membres);
   }
+  const casesDe = (membres: string[]): [number, number][] => {
+    const uniques = new Map<string, [number, number]>();
+    for (const k of membres) {
+      const [l, c] = k.split(',').map(Number);
+      uniques.set(`${l},${c}`, [l, c]);
+    }
+    return [...uniques.values()];
+  };
+  const reseaux = composantes.length;
+
   if (options.unSeulReseau && reseaux > 1) {
-    erreurs.push(`${reseaux} réseaux distincts alors qu'un seul est demandé.`);
+    // On met en évidence tout sauf le plus grand réseau.
+    const tailles = composantes.map((m) => casesDe(m).length);
+    const principal = tailles.indexOf(Math.max(...tailles));
+    const autres = composantes.filter((_, i) => i !== principal).flatMap(casesDe);
+    ajouter(`La carte contient ${reseaux} réseaux de tranchées séparés alors qu'un seul est demandé.`, autres);
   }
+
+  if (options.exigerSortie === true) {
+    for (const membres of composantes) {
+      let sortie = false;
+      for (const k of membres) {
+        const [l, c, g] = k.split(',').map(Number);
+        const a = orient[l][c]!;
+        const groupe = a.groupes[g];
+        if (a.bloc.pente === true && groupe.length === 1) sortie = true;
+        if (options.sortieBord) {
+          for (const d of groupe) {
+            const [dl, dc] = VECTEUR[d];
+            const nl = l + dl;
+            const nc = c + dc;
+            if (nl < 0 || nl >= options.lignes || nc < 0 || nc >= options.colonnes) sortie = true;
+          }
+        }
+      }
+      if (!sortie) {
+        const [l0, c0] = membres[0].split(',').map(Number);
+        const fin = options.sortieBord ? 'ni rampe de sortie ni ouverture sur le bord de la table' : 'pas de rampe de sortie';
+        ajouter(`Le réseau passant par ${nomCase(l0, c0)} est complètement fermé : il n'a ${fin}.`, casesDe(membres));
+      }
+    }
+  }
+
   if (options.minBlocsTranchee !== undefined) {
     let k = 0;
     for (const ligne of orient) for (const x of ligne) if (x && x.bloc.liaisons.length > 0) k++;
     if (k < options.minBlocsTranchee) {
-      erreurs.push(`Seulement ${k} cases de tranchée (minimum ${options.minBlocsTranchee}).`);
+      ajouter(`Seulement ${k} cases de tranchée (minimum ${options.minBlocsTranchee}).`, []);
     }
   }
 
-  return { erreurs, reseaux, utilisation };
+  return rapport(reseaux);
 }

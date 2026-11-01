@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { BlocDef } from '../types.js';
-import type { Grille, Resultat } from '../generateur.js';
-import { construireVariantes, estUtilisable } from '../blocs.js';
-import { ApercuBloc, GrilleSvg, nomColonne } from './Tuile.js';
+import type { CellulePosee, Grille, Resultat } from '../generateur.js';
+import { construireVariantes, estUtilisable, rotationSuivante } from '../blocs.js';
+import { verifier } from '../verificateur.js';
+import { cleCase, depuisCle, nomCase } from '../cases.js';
+import { ApercuBloc, GrilleSvg } from './Tuile.js';
 import { appliquerQuantites, BLOCS_BASE, charger, quantitesExemple, sauver, type Etat, type Reglages } from './stockStore.js';
 import { exporterPng } from './export.js';
 
@@ -15,6 +17,8 @@ interface Generation {
   lignes: number;
   colonnes: number;
   ms: number;
+  /** true dès qu'un bloc a été modifié à la main : la graine ne décrit plus la carte. */
+  modifiee: boolean;
   /** Empreinte des paramètres utilisés, pour savoir si la carte affichée est périmée. */
   cle: string;
 }
@@ -22,6 +26,11 @@ interface Generation {
 const LIMITE_CASES_CONSEILLEE = 144;
 
 function conseil(raison: string): string {
+  if (/figé/.test(raison)) {
+    return raison.startsWith('Aucune configuration')
+      ? 'Désélectionnez certains blocs pour laisser plus de liberté au générateur.'
+      : 'Corrigez ou désélectionnez les blocs concernés, puis regénérez.';
+  }
   if (raison.startsWith('Stock insuffisant')) return "Ajoutez des blocs dans l'onglet Blocs, ou réduisez la taille de la table.";
   if (raison.startsWith('Aucune configuration')) {
     return 'Essayez d’autoriser les sorties sur le bord de table ou plusieurs réseaux, ou ajoutez des blocs variés (croix, rampes, plats).';
@@ -36,7 +45,7 @@ function descriptionBloc(b: BlocDef): string {
   if (b.pente) return 'Sortie de tranchée (pente)';
   if (b.liaisons.some((g) => g.length === 1)) return 'Fin de tranchée (impasse)';
   if (!b.centre) {
-    return b.liaisons.length > 1 ? `${b.liaisons.length} tranchées en arc, indépendantes` : 'Tranchée en arc dans un coin';
+    return b.liaisons.length > 1 ? `${b.liaisons.length} tranchées en diagonale, indépendantes` : 'Tranchée en diagonale dans un coin';
   }
   return `${b.liaisons[0].length} ouvertures`;
 }
@@ -85,16 +94,27 @@ export default function App() {
   const [generation, setGeneration] = useState<Generation | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
-  const [selection, setSelection] = useState<{ l: number; c: number } | null>(null);
+  /** Cases sélectionnées = cases figées lors d'une régénération. */
+  const [selection, setSelection] = useState<ReadonlySet<string>>(new Set());
+  /** Sélection multiple active : un toucher ajoute ou retire une case au lieu de la remplacer. */
+  const [modeMulti, setModeMulti] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const worker = useRef<Worker | null>(null);
 
   const { reglages, quantites } = etat;
   const blocs = useMemo(() => appliquerQuantites(quantites), [quantites]);
   const stockUtilisable = useMemo(() => construireVariantes(blocs).types.reduce((s, t) => s + t.quantite, 0), [blocs]);
+  const typesChoisissables = useMemo(() => BLOCS_BASE.filter(estUtilisable), []);
   const cases = reglages.lignes * reglages.colonnes;
   const stockSuffisant = stockUtilisable >= cases;
-  const cleCourante = JSON.stringify([reglages.lignes, reglages.colonnes, reglages.sortieBord, reglages.unSeulReseau, quantites]);
+  const cleCourante = JSON.stringify([
+    reglages.lignes,
+    reglages.colonnes,
+    reglages.sortieBord,
+    reglages.unSeulReseau,
+    reglages.exigerSortie,
+    quantites,
+  ]);
 
   useEffect(() => sauver(etat), [etat]);
   useEffect(() => {
@@ -107,20 +127,54 @@ export default function App() {
   const majQuantite = (id: string, v: number) =>
     setEtat((e) => ({ ...e, personnalise: true, quantites: { ...e.quantites, [id]: v } }));
 
+  // --- Sélection -----------------------------------------------------------------------------
+  const appliquerSelection = (s: Set<string>, multi: boolean) => {
+    setSelection(s);
+    setModeMulti(multi && s.size > 0);
+  };
+  const deselectionner = () => appliquerSelection(new Set(), false);
+  const basculer = (l: number, c: number) => {
+    const k = cleCase(l, c);
+    const s = new Set(selection);
+    if (s.has(k)) s.delete(k);
+    else s.add(k);
+    appliquerSelection(s, true);
+  };
+  const toucher = (l: number, c: number, multi: boolean) => {
+    if (modeMulti || multi) {
+      basculer(l, c);
+      return;
+    }
+    const k = cleCase(l, c);
+    appliquerSelection(selection.size === 1 && selection.has(k) ? new Set() : new Set([k]), false);
+  };
+
+  // --- Génération ----------------------------------------------------------------------------
   const lancer = useCallback(() => {
     worker.current?.terminate();
     setEnCours(true);
     setErreur(null);
-    setSelection(null);
     const graine = Math.floor(Math.random() * 2147483647);
-    const { lignes, colonnes, sortieBord, unSeulReseau } = reglages;
+    const { lignes, colonnes, sortieBord, unSeulReseau, exigerSortie } = reglages;
+
+    // Les cases sélectionnées sont imposées au générateur : elles gardent type et orientation.
+    const memeTable = generation !== null && generation.lignes === lignes && generation.colonnes === colonnes;
+    const fixes = memeTable
+      ? [...selection].map((k) => {
+          const [l, c] = depuisCle(k);
+          const cel = generation!.grille[l][c];
+          return { l, c, typeId: cel.typeId, rotation: cel.rotation };
+        })
+      : [];
+    if (!memeTable && selection.size > 0) deselectionner();
+
     const w = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
     worker.current = w;
     w.onmessage = (e: MessageEvent<Resultat>) => {
       w.terminate();
       setEnCours(false);
       if (e.data.ok) {
-        setGeneration({ grille: e.data.grille, graine, blocs, lignes, colonnes, ms: e.data.stats.ms, cle: cleCourante });
+        setGeneration({ grille: e.data.grille, graine, blocs, lignes, colonnes, ms: e.data.stats.ms, modifiee: false, cle: cleCourante });
       } else {
         setErreur(e.data.raison);
       }
@@ -130,8 +184,12 @@ export default function App() {
       setEnCours(false);
       setErreur('Erreur interne pendant la génération.');
     };
-    w.postMessage({ blocs, options: { lignes, colonnes, sortieBord, unSeulReseau, graine, tempsMaxMs: 4000 } });
-  }, [blocs, reglages, cleCourante]);
+    w.postMessage({
+      blocs,
+      options: { lignes, colonnes, sortieBord, unSeulReseau, exigerSortie, fixes, graine, tempsMaxMs: 4000 },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blocs, reglages, cleCourante, generation, selection]);
 
   // Première carte dès l'ouverture, pour voir tout de suite le résultat.
   useEffect(() => {
@@ -142,12 +200,52 @@ export default function App() {
 
   const perimee = generation !== null && generation.cle !== cleCourante;
 
+  // --- Contrôle des règles en direct (après une modification manuelle, ou un changement de règle) ---
+  const rapport = useMemo(
+    () =>
+      generation
+        ? verifier(generation.grille, blocs, {
+            lignes: generation.lignes,
+            colonnes: generation.colonnes,
+            sortieBord: reglages.sortieBord,
+            unSeulReseau: reglages.unSeulReseau,
+            exigerSortie: reglages.exigerSortie,
+          })
+        : null,
+    [generation, blocs, reglages.sortieBord, reglages.unSeulReseau, reglages.exigerSortie],
+  );
+  const casesEnConflit = useMemo(
+    () => new Set((rapport?.conflits ?? []).flatMap((c) => c.cases.map(([l, col]) => cleCase(l, col)))),
+    [rapport],
+  );
+
   const montage = useMemo(() => {
     if (!generation) return [];
     const compte = new Map<string, number>();
     for (const l of generation.grille) for (const c of l) compte.set(c.typeId, (compte.get(c.typeId) ?? 0) + 1);
-    return generation.blocs.filter((b) => compte.has(b.id)).map((b) => ({ bloc: b, n: compte.get(b.id)! }));
-  }, [generation]);
+    return blocs.filter((b) => compte.has(b.id)).map((b) => ({ bloc: b, n: compte.get(b.id)! }));
+  }, [generation, blocs]);
+
+  // --- Édition du bloc sélectionné -----------------------------------------------------------
+  const cleUnique = selection.size === 1 ? [...selection][0] : null;
+  const [selL, selC] = cleUnique ? depuisCle(cleUnique) : [-1, -1];
+  const celluleSel = cleUnique && generation ? generation.grille[selL]?.[selC] : undefined;
+  const blocSel = celluleSel ? BLOCS_BASE.find((b) => b.id === celluleSel.typeId) : undefined;
+
+  const modifierCellule = (f: (cel: CellulePosee) => CellulePosee) =>
+    setGeneration(
+      (g) =>
+        g && {
+          ...g,
+          modifiee: true,
+          grille: g.grille.map((ligne, i) => (i === selL ? ligne.map((cel, j) => (j === selC ? f(cel) : cel)) : ligne)),
+        },
+    );
+  const changerType = (id: string) => modifierCellule((cel) => ({ typeId: id, rotation: cel.rotation }));
+  const tourner = (sens: 1 | -1) => {
+    if (!blocSel) return;
+    modifierCellule((cel) => ({ ...cel, rotation: rotationSuivante(blocSel, cel.rotation, sens) }));
+  };
 
   const exporter = async () => {
     const svg = document.getElementById('carte-svg') as SVGSVGElement | null;
@@ -159,9 +257,6 @@ export default function App() {
       setMessage((e as Error).message);
     }
   };
-
-  const celluleSel = selection && generation ? generation.grille[selection.l]?.[selection.c] : undefined;
-  const blocSel = celluleSel ? generation?.blocs.find((b) => b.id === celluleSel.typeId) : undefined;
 
   return (
     <div className="appli">
@@ -181,9 +276,7 @@ export default function App() {
                 </button>
               </div>
             )}
-            {perimee && (
-              <div className="bandeau info">Les réglages ou le stock ont changé : regénérez pour appliquer.</div>
-            )}
+            {perimee && <div className="bandeau info">Les réglages ou le stock ont changé : regénérez pour appliquer.</div>}
             {erreur && (
               <div className="bandeau alerte" role="alert">
                 <strong>{erreur}</strong>
@@ -194,7 +287,8 @@ export default function App() {
             {generation ? (
               <>
                 <div className="meta">
-                  Table {generation.lignes}×{generation.colonnes} · {generation.lignes * generation.colonnes} blocs · graine {generation.graine}
+                  Table {generation.lignes}×{generation.colonnes} · {generation.lignes * generation.colonnes} blocs
+                  {generation.modifiee ? ' · modifiée à la main' : ` · graine ${generation.graine}`}
                 </div>
                 <div className={`carte${enCours ? ' calcul' : ''}`}>
                   <GrilleSvg
@@ -203,25 +297,97 @@ export default function App() {
                     blocs={generation.blocs}
                     quadrillage={reglages.quadrillage}
                     selection={selection}
-                    onSelection={(l, c) => setSelection((s) => (s && s.l === l && s.c === c ? null : { l, c }))}
+                    conflits={casesEnConflit}
+                    onTap={toucher}
+                    onLongPress={(l, c) => basculer(l, c)}
                   />
                   {enCours && <div className="voile">Calcul en cours…</div>}
                 </div>
 
-                {blocSel && celluleSel && selection ? (
-                  <div className="info-case">
-                    <ApercuBloc bloc={blocSel} rotation={celluleSel.rotation} taille={64} />
-                    <div>
-                      <strong>
-                        Case {nomColonne(selection.c)}
-                        {selection.l + 1}
-                      </strong>
-                      <div>{blocSel.nom}</div>
-                      <small>{descriptionBloc(blocSel)}</small>
-                    </div>
+                {rapport && rapport.conflits.length > 0 && (
+                  <div className="bandeau avertissement" role="status" aria-live="polite">
+                    <strong>
+                      {rapport.conflits.length === 1 ? 'Une règle n’est pas respectée' : `${rapport.conflits.length} règles ne sont pas respectées`}
+                    </strong>
+                    <ul>
+                      {rapport.conflits.map((c, i) => (
+                        <li key={i}>{c.message}</li>
+                      ))}
+                    </ul>
                   </div>
-                ) : (
-                  <p className="astuce">Touchez une case pour voir le bloc à y poser.</p>
+                )}
+
+                {selection.size === 0 && (
+                  <p className="astuce">
+                    Touchez un bloc pour le modifier. Appui long pour en sélectionner plusieurs (Ctrl + clic sur ordinateur). Les blocs
+                    sélectionnés sont conservés quand vous regénérez la carte.
+                  </p>
+                )}
+
+                {selection.size >= 2 && (
+                  <div className="barre-selection">
+                    <div>
+                      <strong>{selection.size} blocs sélectionnés</strong>
+                      <small>Conservés à la régénération. Sélectionnez un seul bloc pour le modifier.</small>
+                    </div>
+                    <button type="button" className="secondaire" onClick={deselectionner}>
+                      Tout désélectionner
+                    </button>
+                  </div>
+                )}
+
+                {blocSel && celluleSel && (
+                  <section className="edition" aria-label="Modifier le bloc sélectionné">
+                    <div className="edition-tete">
+                      <ApercuBloc bloc={blocSel} rotation={celluleSel.rotation} taille={64} />
+                      <div className="edition-titre">
+                        <strong>Case {nomCase(selL, selC)}</strong>
+                        <div>{blocSel.nom}</div>
+                        <small>{descriptionBloc(blocSel)} · conservé à la régénération</small>
+                      </div>
+                    </div>
+                    <div className="edition-rotation">
+                      <button type="button" className="secondaire" onClick={() => tourner(-1)}>
+                        ↺ Tourner à gauche
+                      </button>
+                      <button type="button" className="secondaire" onClick={() => tourner(1)}>
+                        ↻ Tourner à droite
+                      </button>
+                    </div>
+                    <div className="titre-choix" id="titre-types">
+                      Type de bloc
+                    </div>
+                    <div className="choix-types" role="radiogroup" aria-labelledby="titre-types">
+                      {typesChoisissables.map((b) => {
+                        const actuel = b.id === celluleSel.typeId;
+                        const utilises = rapport?.utilisation[b.id] ?? 0;
+                        const quantite = blocs.find((x) => x.id === b.id)?.quantite ?? 0;
+                        const epuise = !actuel && utilises >= quantite;
+                        return (
+                          <button
+                            key={b.id}
+                            type="button"
+                            role="radio"
+                            aria-checked={actuel}
+                            onClick={() => changerType(b.id)}
+                            data-type={b.id}
+                          >
+                            <ApercuBloc bloc={b} rotation={celluleSel.rotation} taille={48} />
+                            <span className="nom">{b.nom}</span>
+                            <small className={epuise ? 'epuise' : ''}>
+                              {utilises}/{quantite}
+                              {epuise ? ' · stock épuisé' : ''}
+                            </small>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="actions">
+                      <button type="button" className="secondaire" onClick={deselectionner}>
+                        Désélectionner
+                      </button>
+                    </div>
+                  </section>
                 )}
               </>
             ) : (
@@ -230,7 +396,7 @@ export default function App() {
 
             <div className="actions">
               <button type="button" className="primaire" onClick={lancer} disabled={enCours || !stockSuffisant}>
-                {generation ? 'Regénérer une carte' : 'Générer une carte'}
+                {generation ? (selection.size > 0 ? 'Regénérer le reste de la carte' : 'Regénérer une carte') : 'Générer une carte'}
               </button>
               <button type="button" className="secondaire" onClick={exporter} disabled={!generation || enCours}>
                 Exporter en image
@@ -245,7 +411,7 @@ export default function App() {
                     <li key={bloc.id}>
                       <ApercuBloc bloc={bloc} taille={44} />
                       <span className="nom">{bloc.nom}</span>
-                      <span className="compte">
+                      <span className={`compte${n > bloc.quantite ? ' depasse' : ''}`}>
                         × {n}
                         <small> / {bloc.quantite}</small>
                       </span>
@@ -347,6 +513,12 @@ export default function App() {
                 titre="Un seul réseau"
                 aide="Toutes les tranchées sont reliées entre elles. Sinon, plusieurs réseaux séparés sont acceptés."
               />
+              <Interrupteur
+                actif={reglages.exigerSortie}
+                onChange={(v) => majReglages({ exigerSortie: v })}
+                titre="Aucune tranchée fermée"
+                aide="Chaque réseau a au moins une rampe de sortie ou, si c'est autorisé, une ouverture sur le bord de la table."
+              />
             </div>
 
             <div className="groupe">
@@ -359,8 +531,9 @@ export default function App() {
             </div>
 
             <p className="aide">
-              Les règles toujours appliquées : deux blocs voisins se raccordent (tranchée contre tranchée, surface contre surface), aucune
-              tranchée ne se termine contre un mur, et le stock n’est jamais dépassé.
+              Les règles toujours appliquées : deux blocs voisins se raccordent (tranchée contre tranchée, surface contre surface), et le
+              stock n’est jamais dépassé. Si vous modifiez un bloc à la main et qu’une règle active n’est plus respectée, la carte vous
+              l’indique.
             </p>
           </section>
         )}

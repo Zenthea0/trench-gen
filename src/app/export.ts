@@ -8,9 +8,8 @@ export async function exporterPng(svg: SVGSVGElement, nomFichier: string): Promi
   clone.setAttribute('width', String(largeurPx));
   clone.setAttribute('height', String(hauteurPx));
   clone.removeAttribute('style');
-  // Les zones cliquables invisibles et la sélection n'ont rien à faire dans l'image.
-  clone.querySelectorAll('rect[fill="transparent"]').forEach((n) => n.remove());
-  clone.querySelectorAll('rect[stroke="#d9480f"]').forEach((n) => n.remove());
+  // Zones tactiles, sélection, cadenas et cadres de conflit n'ont rien à faire dans l'image.
+  clone.querySelectorAll('[data-ui]').forEach((n) => n.remove());
 
   const source = new XMLSerializer().serializeToString(clone);
   const url = URL.createObjectURL(new Blob([source], { type: 'image/svg+xml;charset=utf-8' }));
