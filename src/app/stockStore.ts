@@ -1,5 +1,5 @@
 import blocsInitiaux from '../../data/blocs.json';
-import type { BlocDef, FichierBlocs } from '../types.js';
+import type { BlocDef, FichierBlocs, Symetrie } from '../types.js';
 
 /** Définition des types de blocs, telle que livrée avec l'application. */
 export const BLOCS_BASE: BlocDef[] = (blocsInitiaux as unknown as FichierBlocs).blocs;
@@ -11,6 +11,8 @@ export interface Reglages {
   unSeulReseau: boolean;
   /** Aucune tranchée complètement fermée : chaque réseau a une rampe ou une ouverture sur le bord. */
   exigerSortie: boolean;
+  /** Une seule symétrie à la fois : aucune, centrale (demi-tour) ou axiale (miroir haut/bas). */
+  symetrie: Symetrie;
   quadrillage: boolean;
 }
 
@@ -28,6 +30,7 @@ export const REGLAGES_DEFAUT: Reglages = {
   sortieBord: true,
   unSeulReseau: true,
   exigerSortie: true,
+  symetrie: 'aucune',
   quadrillage: true,
 };
 

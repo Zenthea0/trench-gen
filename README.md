@@ -26,6 +26,16 @@ Réglables (onglet Réglages) :
 - **Un seul réseau** de tranchées (par défaut), ou plusieurs.
 - **Aucune tranchée fermée** (par défaut) : chaque réseau a au moins une rampe de sortie ou, si c'est autorisé, une ouverture sur le bord de la table. L'impasse ne compte pas comme sortie.
 
+### Symétrie de la table
+
+Dans **Réglages**, un sélecteur unique propose : *Aucune symétrie*, *Symétrie centrale (demi-tour)* ou *Symétrie axiale (miroir haut / bas, axe Est–Ouest)*. Les deux symétries ne peuvent pas être actives ensemble. Pour un axe Nord–Sud, tournez simplement le téléphone de 90°.
+
+- Deux blocs symétriques sont toujours du même type : le stock est consommé par paires.
+- Centre ou axe sur un bloc (dimension impaire) : ce bloc doit être identique à son image ; seuls les types qui le permettent (dans la bonne orientation) sont posés. Centre à l'angle de 4 blocs, ou axe entre deux rangées (dimension paire) : les blocs se répondent deux à deux.
+- Le texte sous le sélecteur indique où tombent le centre ou l'axe pour la taille choisie. Aucune taille n'est déconseillée.
+- Sélectionner un bloc fait apparaître son symétrique avec un cadre pointillé ; il est conservé lui aussi à la régénération.
+- Une modification manuelle ne change pas le symétrique : si la symétrie est rompue, un avertissement nomme les blocs concernés.
+
 ## Développement
 
 ```bash

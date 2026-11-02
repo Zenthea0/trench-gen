@@ -1,6 +1,6 @@
-import type { BlocDef } from './types.js';
-import { construireVariantes, estUtilisable, varianteDe } from './blocs.js';
-import { nomCase } from './cases.js';
+import type { BlocDef, Symetrie } from './types.js';
+import { construireVariantes, estUtilisable, signatureSymetrique, varianteDe } from './blocs.js';
+import { caseSymetrique, nomCase } from './cases.js';
 
 /** Un bloc imposé : il est conservé tel quel (type et orientation) par la génération. */
 export interface CelluleFixe {
@@ -22,6 +22,11 @@ export interface Options {
    * au moins une rampe de sortie ou, si c'est autorisé, une ouverture sur le bord de la table.
    */
   exigerSortie: boolean;
+  /**
+   * Symétrie de la table. Une case et sa case symétrique reçoivent toujours des blocs du même
+   * type (posés par paires) ; au centre ou sur l'axe, le bloc doit être identique à son image.
+   */
+  symetrie: Symetrie;
   /** 0..1 : tendance à poser des blocs de tranchée plutôt que des blocs plats. */
   densite: number;
   /** Graine du générateur aléatoire (même graine + mêmes paramètres = même résultat). */
@@ -32,7 +37,7 @@ export interface Options {
   noeudsParEssai: number;
   /** Nombre minimal de cases contenant au moins une tranchée. */
   minBlocsTranchee: number;
-  /** Blocs imposés, conservés en l'état. */
+  /** Blocs imposés, conservés en l'état (leurs symétriques sont imposés aussi). */
   fixes: CelluleFixe[];
 }
 
@@ -42,6 +47,7 @@ export const OPTIONS_DEFAUT: Options = {
   sortieBord: true,
   unSeulReseau: true,
   exigerSortie: true,
+  symetrie: 'aucune',
   densite: 0.6,
   graine: 1,
   tempsMaxMs: 2000,
@@ -86,7 +92,8 @@ type Code = 'ok' | 'epuise' | 'limite';
 
 /**
  * Génère une grille cohérente par backtracking (problème de satisfaction de contraintes) :
- *  - les blocs imposés (options.fixes) sont posés d'abord et ne changent jamais ;
+ *  - les blocs imposés (options.fixes) et leurs symétriques sont posés d'abord ;
+ *  - avec une symétrie, on décide pour une « orbite » (une case et sa symétrique) à la fois ;
  *  - on choisit toujours la case la plus contrainte (moins de blocs possibles) ;
  *  - on essaie ses candidats dans un ordre aléatoire pondéré ;
  *  - on recommence avec un nouveau tirage si un essai dépasse son budget de nœuds ;
@@ -126,6 +133,47 @@ export function generer(blocs: BlocDef[], options: Partial<Options> = {}): Resul
     }
   }
 
+  // --- Symétrie : case symétrique de chaque case, et variante symétrique de chaque variante ---
+  const sym = o.symetrie;
+  const symActive = sym !== 'aucune';
+  const miroirCase = new Int32Array(n);
+  for (let l = 0; l < o.lignes; l++) {
+    for (let c = 0; c < o.colonnes; c++) {
+      const [ml, mc] = caseSymetrique(l, c, o.lignes, o.colonnes, sym);
+      miroirCase[l * o.colonnes + c] = ml * o.colonnes + mc;
+    }
+  }
+  // miroirVar[v] : variante du MÊME type qui est l'image de v (-1 si elle n'existe pas).
+  const miroirVar = new Int32Array(variantes.length).fill(-1);
+  if (sym !== 'aucune') {
+    const parSignature = new Map<string, number>();
+    variantes.forEach((v, i) => parSignature.set(`${v.typeId}|${v.signature}`, i));
+    variantes.forEach((v, i) => {
+      const j = parSignature.get(`${v.typeId}|${signatureSymetrique(v, sym)}`);
+      if (j !== undefined) miroirVar[i] = j;
+    });
+
+    // Le stock est consommé par paires du même type (un seul bloc au centre ou sur l'axe) :
+    // on le vérifie d'emblée pour donner une explication claire plutôt qu'un échec de recherche.
+    let casesPropres = 0;
+    for (let cell = 0; cell < n; cell++) if (miroirCase[cell] === cell) casesPropres++;
+    let capacitePaires = 0;
+    let singlesPossibles = 0;
+    types.forEach((t, ti) => {
+      const indices = variantes.map((_, i) => i).filter((i) => variantes[i].typeIndex === ti);
+      if (indices.some((i) => miroirVar[i] >= 0)) capacitePaires += 2 * Math.floor(t.quantite / 2);
+      if (indices.some((i) => miroirVar[i] === i)) singlesPossibles += t.quantite % 2;
+    });
+    const capacite = capacitePaires + Math.min(casesPropres, singlesPossibles);
+    if (capacite < n) {
+      return echec(
+        `Stock insuffisant pour la symétrie : les blocs sont posés par paires du même type, ` +
+          `ce stock ne permet de remplir que ${capacite} cases sur ${n}.`,
+      );
+    }
+  }
+  const lieuPropre = sym === 'centrale' ? 'au centre de la table' : "sur l'axe de symétrie";
+
   // --- Blocs imposés : validation avant toute recherche, avec des messages précis ---
   const fixesOrig = new Map<number, CelluleFixe>();
   for (const f of o.fixes) {
@@ -147,11 +195,45 @@ export function generer(blocs: BlocDef[], options: Partial<Options> = {}): Resul
       return echec(`Les blocs figés dépassent le stock : « ${def.nom} » (${k} figés pour ${def.quantite} disponibles).`);
     }
   }
-  const fixesIdx = new Map<number, number>(); // case -> indice de variante
+  const explicites = new Map<number, number>(); // case -> indice de variante
   for (const [cell, f] of fixesOrig) {
     const def = blocs.find((b) => b.id === f.typeId)!;
     const signature = varianteDe(def, f.rotation).signature;
-    fixesIdx.set(cell, variantes.findIndex((v) => v.typeId === f.typeId && v.signature === signature));
+    explicites.set(cell, variantes.findIndex((v) => v.typeId === f.typeId && v.signature === signature));
+  }
+  const fixesIdx = new Map<number, number>(explicites);
+  if (symActive) {
+    for (const [cell, vi] of explicites) {
+      const l = Math.floor(cell / o.colonnes);
+      const c = cell % o.colonnes;
+      const m = miroirVar[vi];
+      if (m < 0) return echec(`Le bloc figé en ${nomCase(l, c)} n'a pas de symétrique possible.`);
+      const mc = miroirCase[cell];
+      if (mc === cell) {
+        if (m !== vi) return echec(`Le bloc figé en ${nomCase(l, c)} est ${lieuPropre} : il doit être identique à son symétrique.`);
+        continue;
+      }
+      const autre = explicites.get(mc);
+      if (autre !== undefined && autre !== m) {
+        return echec(
+          `Les blocs figés en ${nomCase(l, c)} et ${nomCase(Math.floor(mc / o.colonnes), mc % o.colonnes)} ne sont pas symétriques.`,
+        );
+      }
+      fixesIdx.set(mc, m); // le symétrique d'un bloc figé est figé lui aussi
+    }
+    const compteTotal = new Map<number, number>();
+    for (const vi of fixesIdx.values()) {
+      const ti = variantes[vi].typeIndex;
+      compteTotal.set(ti, (compteTotal.get(ti) ?? 0) + 1);
+    }
+    for (const [ti, k] of compteTotal) {
+      if (k > types[ti].quantite) {
+        const def = blocs.find((b) => b.id === types[ti].id)!;
+        return echec(
+          `Les blocs figés et leurs symétriques dépassent le stock : « ${def.nom} » (${k} nécessaires pour ${types[ti].quantite} disponibles).`,
+        );
+      }
+    }
   }
   for (const [cell, vi] of fixesIdx) {
     const v = variantes[vi];
@@ -198,22 +280,47 @@ export function generer(blocs: BlocDef[], options: Partial<Options> = {}): Resul
     }
   };
 
-  /** Variantes posables sur une case, vu l'état courant. */
+  /** Une variante peut-elle être posée sur une case, vu l'état courant (stock, voisins, bord) ? */
+  const posable = (cell: number, vi: number): boolean => {
+    const v = variantes[vi];
+    if (utilise[v.typeIndex] >= types[v.typeIndex].quantite) return false;
+    for (let d = 0; d < 4; d++) {
+      const nb = voisin[cell * 4 + d];
+      if (nb < 0) {
+        if (v.cotes[d] && !o.sortieBord) return false;
+      } else {
+        const g = grille[nb];
+        if (g >= 0 && variantes[g].cotes[OPP[d]] !== v.cotes[d]) return false;
+      }
+    }
+    return true;
+  };
+
+  /**
+   * Variantes possibles pour une case. Avec une symétrie, on exige aussi que l'image de la
+   * variante soit posable sur la case symétrique (voisins, bord, stock pour 2 blocs).
+   */
   const domaine = (cell: number): number[] => {
     const res: number[] = [];
+    const mir = miroirCase[cell];
     for (let vi = 0; vi < variantes.length; vi++) {
-      const v = variantes[vi];
-      if (utilise[v.typeIndex] >= types[v.typeIndex].quantite) continue;
-      let ok = true;
-      for (let d = 0; d < 4 && ok; d++) {
-        const nb = voisin[cell * 4 + d];
-        if (nb < 0) {
-          if (v.cotes[d] && !o.sortieBord) ok = false;
-        } else {
-          const g = grille[nb];
-          if (g >= 0 && variantes[g].cotes[OPP[d]] !== v.cotes[d]) ok = false;
-        }
+      if (!posable(cell, vi)) continue;
+      if (!symActive) {
+        res.push(vi);
+        continue;
       }
+      const m = miroirVar[vi];
+      if (m < 0) continue;
+      if (mir === cell) {
+        if (m === vi) res.push(vi); // sur l'axe ou au centre : le bloc doit être son propre reflet
+        continue;
+      }
+      const ti = variantes[vi].typeIndex;
+      grille[cell] = vi;
+      utilise[ti]++;
+      const ok = posable(mir, m);
+      grille[cell] = -1;
+      utilise[ti]--;
       if (ok) res.push(vi);
     }
     return res;
@@ -318,12 +425,13 @@ export function generer(blocs: BlocDef[], options: Partial<Options> = {}): Resul
       if (o.exigerSortie && r.fermesSansSortie >= 1) return 'epuise';
     }
 
-    // Case la plus contrainte (départage aléatoire)
+    // Case la plus contrainte (départage aléatoire). Avec une symétrie, on ne considère qu'une
+    // case par orbite : la case symétrique est posée en même temps.
     let meilleure = -1;
     let meilleurDom: number[] = [];
     let egalites = 0;
     for (let cell = 0; cell < n; cell++) {
-      if (grille[cell] >= 0) continue;
+      if (grille[cell] >= 0 || miroirCase[cell] < cell) continue;
       const dom = domaine(cell);
       if (dom.length === 0) return 'epuise';
       if (meilleure < 0 || dom.length < meilleurDom.length) {
@@ -339,18 +447,23 @@ export function generer(blocs: BlocDef[], options: Partial<Options> = {}): Resul
       }
     }
 
+    const mir = miroirCase[meilleure];
+    const double = mir !== meilleure;
+    const k = double ? 2 : 1;
     for (const vi of ordonner(meilleurDom)) {
       const ti = variantes[vi].typeIndex;
       grille[meilleure] = vi;
-      utilise[ti]++;
-      assignes++;
-      stockRestant--;
+      if (double) grille[mir] = miroirVar[vi];
+      utilise[ti] += k;
+      assignes += k;
+      stockRestant -= k;
       const r = rec();
       if (r !== 'epuise') return r;
       grille[meilleure] = -1;
-      utilise[ti]--;
-      assignes--;
-      stockRestant++;
+      if (double) grille[mir] = -1;
+      utilise[ti] -= k;
+      assignes -= k;
+      stockRestant += k;
     }
     return 'epuise';
   };

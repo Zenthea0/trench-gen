@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { BlocDef } from '../types.js';
+import type { BlocDef, Symetrie } from '../types.js';
 import type { CellulePosee, Grille, Resultat } from '../generateur.js';
-import { construireVariantes, estUtilisable, rotationSuivante } from '../blocs.js';
+import { construireVariantes, estUtilisable, rotationSuivante, typesAutoSymetriques } from '../blocs.js';
 import { verifier } from '../verificateur.js';
-import { cleCase, depuisCle, nomCase } from '../cases.js';
+import { caseSymetrique, cleCase, depuisCle, nomCase } from '../cases.js';
 import { ApercuBloc, GrilleSvg } from './Tuile.js';
 import { appliquerQuantites, BLOCS_BASE, charger, quantitesExemple, sauver, type Etat, type Reglages } from './stockStore.js';
 import { exporterPng } from './export.js';
@@ -88,6 +88,115 @@ function Interrupteur(props: { actif: boolean; onChange: (v: boolean) => void; t
   );
 }
 
+const OPTIONS_SYMETRIE: { id: Symetrie; titre: string; aide: string }[] = [
+  { id: 'aucune', titre: 'Aucune symétrie', aide: 'La carte est entièrement libre.' },
+  {
+    id: 'centrale',
+    titre: 'Symétrie centrale (demi-tour)',
+    aide: "La carte est identique si on la tourne d'un demi-tour (180°) : le bloc en haut à gauche se retrouve en bas à droite, tourné d'un demi-tour.",
+  },
+  {
+    id: 'axiale',
+    titre: 'Symétrie axiale (miroir haut / bas)',
+    aide: "La moitié haute de la carte est le reflet de la moitié basse, de part et d'autre d'un axe horizontal Est–Ouest qui coupe la table en deux.",
+  },
+];
+
+/** Petit schéma qui montre l'effet de chaque symétrie : un motif en « L » et son image. */
+function PictoSymetrie({ type }: { type: Symetrie }) {
+  const motif = <path d="M10 5 V17 H20" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />;
+  return (
+    <svg viewBox="0 0 60 44" width="60" height="44" aria-hidden="true">
+      <rect x="1.5" y="1.5" width="57" height="41" rx="5" fill="none" stroke="currentColor" strokeWidth="2" opacity="0.45" />
+      {motif}
+      {type === 'aucune' && <circle cx="43" cy="31" r="6" fill="none" stroke="currentColor" strokeWidth="4" />}
+      {type === 'centrale' && (
+        <>
+          <g transform="rotate(180 30 22)">{motif}</g>
+          <circle cx="30" cy="22" r="3.5" fill="#1c7ed6" />
+        </>
+      )}
+      {type === 'axiale' && (
+        <>
+          <g transform="translate(0 44) scale(1 -1)">{motif}</g>
+          <line x1="3" x2="57" y1="22" y2="22" stroke="#1c7ed6" strokeWidth="2.5" strokeDasharray="5 3" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+/** Explique où tombent le centre ou l'axe pour la taille de table choisie, et ce que cela impose. */
+function detailSymetrie(sym: Symetrie, L: number, C: number): string[] {
+  if (sym === 'aucune') return [];
+  const l1 = Math.floor((L - 1) / 2);
+  const c1 = Math.floor((C - 1) / 2);
+  const lImpair = L % 2 === 1;
+  const cImpair = C % 2 === 1;
+  const noms = typesAutoSymetriques(BLOCS_BASE, sym).map((b) => b.nom).join(', ');
+  const lignes: string[] = [];
+  if (sym === 'centrale') {
+    if (lImpair && cImpair) {
+      lignes.push(`Avec une table ${L}×${C}, le centre est au milieu du bloc ${nomCase(l1, c1)}.`);
+      lignes.push(`Ce bloc doit être identique après un demi-tour. Possibles : ${noms} (dans la bonne orientation).`);
+    } else if (!lImpair && !cImpair) {
+      lignes.push(
+        `Avec une table ${L}×${C}, le centre est à l'angle commun des 4 blocs ${nomCase(l1, c1)}, ${nomCase(l1, c1 + 1)}, ${nomCase(l1 + 1, c1)} et ${nomCase(l1 + 1, c1 + 1)}.`,
+      );
+      lignes.push("Aucun bloc n'est son propre symétrique : les blocs se répondent deux à deux.");
+    } else {
+      const [a, b] = lImpair ? [nomCase(l1, c1), nomCase(l1, c1 + 1)] : [nomCase(l1, c1), nomCase(l1 + 1, c1)];
+      lignes.push(`Avec une table ${L}×${C}, le centre est au milieu de la limite entre les blocs ${a} et ${b}.`);
+      lignes.push('Ces deux blocs sont symétriques l’un de l’autre.');
+    }
+  } else if (lImpair) {
+    lignes.push(`Avec ${L} lignes, l'axe traverse la rangée ${l1 + 1}.`);
+    lignes.push(`Chaque bloc de cette rangée doit être identique à son reflet. Possibles : ${noms} (dans la bonne orientation).`);
+  } else {
+    lignes.push(`Avec ${L} lignes, l'axe passe entre les rangées ${l1 + 1} et ${l1 + 2}.`);
+    lignes.push("Aucun bloc n'est son propre reflet : les rangées se répondent deux à deux.");
+  }
+  lignes.push('Deux blocs symétriques sont toujours du même type : le stock est donc consommé par paires.');
+  return lignes;
+}
+
+function SelecteurSymetrie(props: { valeur: Symetrie; onChange: (v: Symetrie) => void; lignes: number; colonnes: number }) {
+  const detail = detailSymetrie(props.valeur, props.lignes, props.colonnes);
+  return (
+    <div className="groupe">
+      <div className="symetrie-titre" id="titre-symetrie">
+        <strong>Symétrie de la table</strong>
+        <small>Choisissez une seule option.</small>
+      </div>
+      <div className="options-symetrie" role="radiogroup" aria-labelledby="titre-symetrie">
+        {OPTIONS_SYMETRIE.map((o) => (
+          <button
+            key={o.id}
+            type="button"
+            role="radio"
+            aria-checked={props.valeur === o.id}
+            data-symetrie={o.id}
+            onClick={() => props.onChange(o.id)}
+          >
+            <PictoSymetrie type={o.id} />
+            <span className="texte">
+              <strong>{o.titre}</strong>
+              <small>{o.aide}</small>
+            </span>
+          </button>
+        ))}
+      </div>
+      {detail.length > 0 && (
+        <div className="symetrie-detail">
+          {detail.map((t, i) => (
+            <p key={i}>{t}</p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [etat, setEtat] = useState<Etat>(charger);
   const [onglet, setOnglet] = useState<Onglet>('carte');
@@ -113,6 +222,7 @@ export default function App() {
     reglages.sortieBord,
     reglages.unSeulReseau,
     reglages.exigerSortie,
+    reglages.symetrie,
     quantites,
   ]);
 
@@ -155,7 +265,7 @@ export default function App() {
     setEnCours(true);
     setErreur(null);
     const graine = Math.floor(Math.random() * 2147483647);
-    const { lignes, colonnes, sortieBord, unSeulReseau, exigerSortie } = reglages;
+    const { lignes, colonnes, sortieBord, unSeulReseau, exigerSortie, symetrie } = reglages;
 
     // Les cases sélectionnées sont imposées au générateur : elles gardent type et orientation.
     const memeTable = generation !== null && generation.lignes === lignes && generation.colonnes === colonnes;
@@ -186,7 +296,7 @@ export default function App() {
     };
     w.postMessage({
       blocs,
-      options: { lignes, colonnes, sortieBord, unSeulReseau, exigerSortie, fixes, graine, tempsMaxMs: 4000 },
+      options: { lignes, colonnes, sortieBord, unSeulReseau, exigerSortie, symetrie, fixes, graine, tempsMaxMs: 4000 },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [blocs, reglages, cleCourante, generation, selection]);
@@ -210,14 +320,28 @@ export default function App() {
             sortieBord: reglages.sortieBord,
             unSeulReseau: reglages.unSeulReseau,
             exigerSortie: reglages.exigerSortie,
+            symetrie: reglages.symetrie,
           })
         : null,
-    [generation, blocs, reglages.sortieBord, reglages.unSeulReseau, reglages.exigerSortie],
+    [generation, blocs, reglages.sortieBord, reglages.unSeulReseau, reglages.exigerSortie, reglages.symetrie],
   );
   const casesEnConflit = useMemo(
     () => new Set((rapport?.conflits ?? []).flatMap((c) => c.cases.map(([l, col]) => cleCase(l, col)))),
     [rapport],
   );
+
+  // Symétriques des blocs sélectionnés : conservés eux aussi à la régénération.
+  const fantomes = useMemo(() => {
+    const s = new Set<string>();
+    if (!generation || reglages.symetrie === 'aucune') return s;
+    for (const k of selection) {
+      const [l, c] = depuisCle(k);
+      const [ml, mc] = caseSymetrique(l, c, generation.lignes, generation.colonnes, reglages.symetrie);
+      const km = cleCase(ml, mc);
+      if (!selection.has(km)) s.add(km);
+    }
+    return s;
+  }, [selection, generation, reglages.symetrie]);
 
   const montage = useMemo(() => {
     if (!generation) return [];
@@ -231,6 +355,10 @@ export default function App() {
   const [selL, selC] = cleUnique ? depuisCle(cleUnique) : [-1, -1];
   const celluleSel = cleUnique && generation ? generation.grille[selL]?.[selC] : undefined;
   const blocSel = celluleSel ? BLOCS_BASE.find((b) => b.id === celluleSel.typeId) : undefined;
+  const miroirSel =
+    cleUnique && generation && reglages.symetrie !== 'aucune'
+      ? caseSymetrique(selL, selC, generation.lignes, generation.colonnes, reglages.symetrie)
+      : null;
 
   const modifierCellule = (f: (cel: CellulePosee) => CellulePosee) =>
     setGeneration(
@@ -289,6 +417,7 @@ export default function App() {
                 <div className="meta">
                   Table {generation.lignes}×{generation.colonnes} · {generation.lignes * generation.colonnes} blocs
                   {generation.modifiee ? ' · modifiée à la main' : ` · graine ${generation.graine}`}
+                  {reglages.symetrie !== 'aucune' && ` · symétrie ${reglages.symetrie === 'centrale' ? 'centrale' : 'axiale'}`}
                 </div>
                 <div className={`carte${enCours ? ' calcul' : ''}`}>
                   <GrilleSvg
@@ -298,11 +427,22 @@ export default function App() {
                     quadrillage={reglages.quadrillage}
                     selection={selection}
                     conflits={casesEnConflit}
+                    fantomes={fantomes}
+                    symetrie={reglages.symetrie}
                     onTap={toucher}
                     onLongPress={(l, c) => basculer(l, c)}
                   />
                   {enCours && <div className="voile">Calcul en cours…</div>}
                 </div>
+
+                {reglages.symetrie !== 'aucune' && (
+                  <p className="legende-symetrie">
+                    <span className="pastille-guide" aria-hidden="true" />
+                    {reglages.symetrie === 'centrale'
+                      ? 'Cible bleue : centre de symétrie. La carte est identique après un demi-tour.'
+                      : 'Ligne bleue pointillée : axe de symétrie Est–Ouest. Le haut et le bas se répondent comme dans un miroir.'}
+                  </p>
+                )}
 
                 {rapport && rapport.conflits.length > 0 && (
                   <div className="bandeau avertissement" role="status" aria-live="polite">
@@ -354,6 +494,13 @@ export default function App() {
                         ↻ Tourner à droite
                       </button>
                     </div>
+                    {miroirSel && (
+                      <p className="note-symetrie">
+                        {miroirSel[0] === selL && miroirSel[1] === selC
+                          ? `Ce bloc est ${reglages.symetrie === 'centrale' ? 'au centre de la table' : "sur l'axe de symétrie"} : il doit être identique à son image.`
+                          : `Symétrie active : le bloc en ${nomCase(miroirSel[0], miroirSel[1])} (cadre pointillé) est conservé lui aussi à la régénération. Modifier ce bloc ne modifie pas son symétrique : un avertissement signale alors la rupture de symétrie.`}
+                      </p>
+                    )}
                     <div className="titre-choix" id="titre-types">
                       Type de bloc
                     </div>
@@ -499,6 +646,13 @@ export default function App() {
                 {cases} blocs au total{cases > LIMITE_CASES_CONSEILLEE ? ' — la génération peut être lente' : ''}
               </div>
             </div>
+
+            <SelecteurSymetrie
+              valeur={reglages.symetrie}
+              onChange={(v) => majReglages({ symetrie: v })}
+              lignes={reglages.lignes}
+              colonnes={reglages.colonnes}
+            />
 
             <div className="groupe">
               <Interrupteur

@@ -405,6 +405,73 @@ input:focus-visible {
   max-width: 90vw;
 }
 
+/* Sélecteur de symétrie */
+.symetrie-titre {
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  border-bottom: 1px solid var(--ligne);
+}
+.options-symetrie button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 12px 12px 8px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--ligne);
+  border-left: 5px solid transparent;
+  text-align: left;
+  color: var(--terre);
+  cursor: pointer;
+}
+.options-symetrie button .texte {
+  color: var(--encre);
+}
+.options-symetrie button svg {
+  flex: none;
+}
+.options-symetrie button[aria-checked='true'] {
+  background: #fff4ec;
+  border-left-color: var(--accent);
+}
+.symetrie-detail {
+  padding: 12px;
+  font-size: 0.9rem;
+  background: #eef5fc;
+  color: #1b4b78;
+}
+.symetrie-detail p {
+  margin: 0 0 6px;
+}
+.symetrie-detail p:last-child {
+  margin-bottom: 0;
+}
+.legende-symetrie {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 2px;
+  font-size: 0.85rem;
+  color: #1b4b78;
+}
+.pastille-guide {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #1c7ed6;
+}
+.note-symetrie {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  font-size: 0.85rem;
+  background: #eef5fc;
+  color: #1b4b78;
+  border-radius: 8px;
+}
+
 /* Avertissements de règles non respectées */
 .bandeau.avertissement {
   background: #fff1e6;

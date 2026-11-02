@@ -219,6 +219,61 @@ export function verifier(
     }
   }
 
+  // Symétrie : chaque case doit avoir pour image le bloc symétrique de son voisin de l'autre côté.
+  // Calcul volontairement indépendant du moteur (on compare les côtés et les liaisons orientés).
+  if (options.symetrie === 'centrale' || options.symetrie === 'axiale') {
+    const sym = options.symetrie;
+    const image = (d: NomCote): NomCote => (sym === 'centrale' ? OPPOSE[d] : d === 'N' ? 'S' : d === 'S' ? 'N' : d);
+    const identite = (d: NomCote): NomCote => d;
+    const empreinte = (a: { cotes: Record<NomCote, 'T' | 'S'>; groupes: NomCote[][] }, f: (d: NomCote) => NomCote) => {
+      const cotes = {} as Record<NomCote, 'T' | 'S'>;
+      for (const d of NOMS) cotes[f(d)] = a.cotes[d];
+      const groupes = a.groupes
+        .map((g) => g.map((d) => NOMS.indexOf(f(d))).sort().join(''))
+        .sort()
+        .join(',');
+      return NOMS.map((d) => cotes[d]).join('') + '|' + groupes;
+    };
+    const rompus: Conflit[] = [];
+    for (let l = 0; l < options.lignes; l++) {
+      for (let c = 0; c < options.colonnes; c++) {
+        const a = orient[l][c];
+        if (!a) continue;
+        const ml = options.lignes - 1 - l;
+        const mc = sym === 'centrale' ? options.colonnes - 1 - c : c;
+        if (ml * options.colonnes + mc < l * options.colonnes + c) continue; // paire déjà traitée
+        if (ml === l && mc === c) {
+          if (empreinte(a, image) !== empreinte(a, identite)) {
+            rompus.push({
+              message:
+                sym === 'centrale'
+                  ? `Le bloc ${nomCase(l, c)} (${a.bloc.nom}) est au centre de la table : il doit être identique après un demi-tour.`
+                  : `Le bloc ${nomCase(l, c)} (${a.bloc.nom}) est sur l'axe de symétrie : il doit être identique à son reflet.`,
+              cases: [[l, c]],
+            });
+          }
+          continue;
+        }
+        const b = orient[ml][mc];
+        if (!b) continue;
+        if (a.bloc.id !== b.bloc.id || empreinte(a, image) !== empreinte(b, identite)) {
+          rompus.push({
+            message: `Symétrie rompue : les blocs ${nomCase(l, c)} (${a.bloc.nom}) et ${nomCase(ml, mc)} (${b.bloc.nom}) ne sont pas symétriques.`,
+            cases: [[l, c], [ml, mc]],
+          });
+        }
+      }
+    }
+    if (rompus.length <= 4) {
+      conflits.push(...rompus);
+    } else {
+      ajouter(
+        `Symétrie rompue : ${rompus.length} blocs ou paires de blocs ne sont pas symétriques (cases encadrées en rouge).`,
+        rompus.flatMap((r) => r.cases),
+      );
+    }
+  }
+
   if (options.minBlocsTranchee !== undefined) {
     let k = 0;
     for (const ligne of orient) for (const x of ligne) if (x && x.bloc.liaisons.length > 0) k++;

@@ -1,4 +1,4 @@
-import type { BlocDef } from './types.js';
+import type { BlocDef, Symetrie } from './types.js';
 import { generer, OPTIONS_DEFAUT, type Options } from './generateur.js';
 import { verifier } from './verificateur.js';
 import { chargerBlocs } from './cli.js';
@@ -19,6 +19,7 @@ interface Scenario {
   sortieBord: boolean;
   unSeulReseau: boolean;
   stock: 'defaut' | 'large';
+  symetrie: Symetrie;
 }
 
 const scenarios: Scenario[] = [];
@@ -32,12 +33,20 @@ for (const [l, c] of [[4, 4], [6, 6], [8, 8], [10, 10]] as const) {
         sortieBord,
         unSeulReseau,
         stock: 'large',
+        symetrie: 'aucune',
       });
     }
   }
 }
-scenarios.push({ nom: '6×6 stock par défaut bord:oui réseau:un', lignes: 6, colonnes: 6, sortieBord: true, unSeulReseau: true, stock: 'defaut' });
-scenarios.push({ nom: '6×6 stock par défaut bord:non réseau:un', lignes: 6, colonnes: 6, sortieBord: false, unSeulReseau: true, stock: 'defaut' });
+scenarios.push({ nom: '6×6 stock par défaut bord:oui réseau:un', lignes: 6, colonnes: 6, sortieBord: true, unSeulReseau: true, stock: 'defaut', symetrie: 'aucune' });
+scenarios.push({ nom: '6×6 stock par défaut bord:non réseau:un', lignes: 6, colonnes: 6, sortieBord: false, unSeulReseau: true, stock: 'defaut', symetrie: 'aucune' });
+
+for (const symetrie of ['centrale', 'axiale'] as const) {
+  for (const [l, c] of [[5, 5], [6, 6], [5, 6], [6, 5], [8, 8]] as const) {
+    scenarios.push({ nom: `${l}×${c} symétrie ${symetrie}`, lignes: l, colonnes: c, sortieBord: true, unSeulReseau: true, stock: 'large', symetrie });
+  }
+  scenarios.push({ nom: `6×6 symétrie ${symetrie} stock par défaut bord:non`, lignes: 6, colonnes: 6, sortieBord: false, unSeulReseau: true, stock: 'defaut', symetrie });
+}
 
 const base = chargerBlocs();
 const pad = (s: string | number, n: number) => String(s).padEnd(n);
@@ -55,6 +64,7 @@ for (const s of scenarios) {
     colonnes: s.colonnes,
     sortieBord: s.sortieBord,
     unSeulReseau: s.unSeulReseau,
+    symetrie: s.symetrie,
     tempsMaxMs: 1000,
   };
   let succes = 0;

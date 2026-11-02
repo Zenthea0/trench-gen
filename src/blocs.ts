@@ -35,6 +35,49 @@ export function estUtilisable(b: BlocDef): boolean {
   return b.liaisons.every((g) => g.length >= 2 || (g.length === 1 && b.fin === 'autorisee'));
 }
 
+/** Image de chaque côté (indices 0..3 = N,E,S,O) par la symétrie : demi-tour, ou miroir haut/bas. */
+const IMAGE_COTE = { centrale: [2, 3, 0, 1], axiale: [2, 1, 0, 3] } as const;
+
+/** Empreinte d'une orientation : types de côtés + groupes de liaison (indépendante de l'ordre). */
+export function signatureDe(cotes: boolean[], groupes: number[][]): string {
+  return (
+    cotes.map((c) => (c ? 'T' : 'S')).join('') +
+    '|' +
+    groupes
+      .map((g) => [...g].sort((a, b) => a - b).join(''))
+      .sort()
+      .join(',')
+  );
+}
+
+/** Empreinte de l'image d'une orientation par la symétrie (demi-tour ou miroir haut/bas). */
+export function signatureSymetrique(v: Variante, sym: 'centrale' | 'axiale'): string {
+  const image = IMAGE_COTE[sym];
+  const cotes = [false, false, false, false];
+  v.cotes.forEach((t, d) => {
+    cotes[image[d]] = t;
+  });
+  return signatureDe(
+    cotes,
+    v.groupes.map((g) => g.map((d) => image[d])),
+  );
+}
+
+/**
+ * Types de blocs qui peuvent être leur propre image (au centre ou sur l'axe) dans au moins
+ * une orientation. Sert à expliquer à l'utilisateur ce qu'on peut poser à cet endroit.
+ */
+export function typesAutoSymetriques(blocs: BlocDef[], sym: 'centrale' | 'axiale'): BlocDef[] {
+  return blocs.filter(
+    (b) =>
+      estUtilisable(b) &&
+      [0, 1, 2, 3].some((r) => {
+        const v = varianteDe(b, r);
+        return signatureSymetrique(v, sym) === v.signature;
+      }),
+  );
+}
+
 /** Calcule le bloc dans une orientation donnée (rotation = nombre de quarts de tour horaires). */
 export function varianteDe(bloc: BlocDef, rotation: number, typeIndex = 0): Variante {
   const r = ((rotation % 4) + 4) % 4;
@@ -48,13 +91,7 @@ export function varianteDe(bloc: BlocDef, rotation: number, typeIndex = 0): Vari
     }
     return cotesGroupe;
   });
-  const signature =
-    cotes.map((c) => (c ? 'T' : 'S')).join('') +
-    '|' +
-    groupes
-      .map((g) => g.join(''))
-      .sort()
-      .join(',');
+  const signature = signatureDe(cotes, groupes);
   return {
     typeId: bloc.id,
     typeIndex,

@@ -5,6 +5,13 @@ export type NomCote = 'N' | 'E' | 'S' | 'O';
 export type TypeCote = 'T' | 'S';
 
 /**
+ * Symétrie imposée à la table :
+ *  - "centrale" : identique après un demi-tour (rotation de 180°) ;
+ *  - "axiale"   : la moitié haute est le reflet de la moitié basse (axe horizontal Est–Ouest).
+ */
+export type Symetrie = 'aucune' | 'centrale' | 'axiale';
+
+/**
  * Définition d'un type de bloc, telle que stockée dans data/blocs.json.
  * Le moteur ne connaît AUCUN type en dur : ajouter un bloc = ajouter un objet ici.
  */

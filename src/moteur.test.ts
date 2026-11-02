@@ -5,6 +5,7 @@ import { construireVariantes, rotationSuivante, validerBloc } from './blocs.js';
 import { generer, OPTIONS_DEFAUT, type Options } from './generateur.js';
 import { verifier } from './verificateur.js';
 import type { BlocDef } from './types.js';
+import { caseSymetrique } from './cases.js';
 
 const blocs = chargerBlocs();
 
@@ -154,4 +155,83 @@ test('rotationSuivante : saute les orientations identiques', () => {
   assert.equal(rotationSuivante(bloc('droit'), 1, 1), 2);
   assert.equal(rotationSuivante(bloc('croix'), 2, 1), 2);
   assert.equal(rotationSuivante(bloc('coude'), 0, -1), 3);
+});
+
+// --- Symétrie -------------------------------------------------------------------------------------
+const grandStock = blocs.map((b) => ({ ...b, quantite: b.quantite * 4 }));
+
+test('symétrie : centrale et axiale, toutes parités de tailles, toujours valide', () => {
+  for (const symetrie of ['centrale', 'axiale'] as const) {
+    for (const [lignes, colonnes] of [[3, 3], [4, 4], [5, 5], [6, 6], [5, 6], [6, 5], [7, 7], [4, 7]]) {
+      for (let graine = 1; graine <= 6; graine++) {
+        const options: Options = { ...OPTIONS_DEFAUT, lignes, colonnes, symetrie, graine, tempsMaxMs: 3000 };
+        const r = generer(grandStock, options);
+        assert.ok(r.ok, `${symetrie} ${lignes}×${colonnes} graine ${graine} : ${r.ok ? '' : r.raison}`);
+        if (r.ok) {
+          assert.deepEqual(verifier(r.grille, grandStock, options).erreurs, [], `${symetrie} ${lignes}×${colonnes} graine ${graine}`);
+        }
+      }
+    }
+  }
+});
+
+test('symétrie : la rupture est signalée avec les blocs concernés', () => {
+  const vide = { typeId: 'vide', rotation: 0 };
+  const opts = { lignes: 2, colonnes: 2, sortieBord: true, unSeulReseau: false, symetrie: 'centrale' as const };
+  // Un droit en A1, rien en B2 : les deux blocs ne sont pas symétriques.
+  const rompue = verifier([[{ typeId: 'droit', rotation: 0 }, vide], [vide, vide]], blocs, opts);
+  const msg = rompue.conflits.find((c) => /Symétrie rompue/.test(c.message));
+  assert.ok(msg, 'rupture de symétrie non signalée');
+  assert.deepEqual(msg!.cases, [[0, 0], [1, 1]]);
+  // Une carte entièrement plate est symétrique : aucun message de symétrie.
+  const plate = verifier([[vide, vide], [vide, vide]], blocs, opts);
+  assert.equal(plate.conflits.filter((c) => /ymétrie|symétrique/.test(c.message)).length, 0);
+  // Sur l'axe, un bloc doit être identique à son reflet (un coude ne l'est pas).
+  const axe = verifier(
+    [[vide], [{ typeId: 'coude', rotation: 0 }], [vide]],
+    blocs,
+    { lignes: 3, colonnes: 1, sortieBord: true, unSeulReseau: false, symetrie: 'axiale' },
+  );
+  assert.ok(axe.conflits.some((c) => /sur l'axe de symétrie/.test(c.message)));
+});
+
+test('symétrie : le symétrique d’un bloc figé est figé aussi', () => {
+  for (const symetrie of ['centrale', 'axiale'] as const) {
+    for (let graine = 1; graine <= 8; graine++) {
+      const options: Options = { ...OPTIONS_DEFAUT, symetrie, tempsMaxMs: 3000 };
+      const base = generer(grandStock, { ...options, graine });
+      assert.ok(base.ok, `base ${symetrie} ${graine}`);
+      if (!base.ok) continue;
+      const fixes = [[0, 1], [2, 3], [1, 5]].map(([l, c]) => ({ l, c, ...base.grille[l][c] }));
+      const r = generer(grandStock, { ...options, graine: graine + 500, fixes });
+      assert.ok(r.ok, `régénération ${symetrie} ${graine} : ${r.ok ? '' : r.raison}`);
+      if (!r.ok) continue;
+      for (const f of fixes) {
+        assert.deepEqual(r.grille[f.l][f.c], { typeId: f.typeId, rotation: f.rotation });
+        const [ml, mc] = caseSymetrique(f.l, f.c, 6, 6, symetrie);
+        assert.equal(r.grille[ml][mc].typeId, base.grille[ml][mc].typeId, 'le symétrique doit être conservé aussi');
+      }
+      assert.deepEqual(verifier(r.grille, grandStock, options).erreurs, [], `${symetrie} ${graine}`);
+    }
+  }
+});
+
+test('symétrie : blocs figés incohérents refusés avec un message clair', () => {
+  const opt = { symetrie: 'centrale' as const, lignes: 5, colonnes: 5 };
+  const centre = generer(grandStock, { ...opt, fixes: [{ l: 2, c: 2, typeId: 'coude', rotation: 0 }] });
+  assert.ok(!centre.ok);
+  if (!centre.ok) assert.match(centre.raison, /identique à son symétrique/);
+  const paire = generer(grandStock, {
+    ...opt,
+    fixes: [{ l: 0, c: 0, typeId: 'coude', rotation: 0 }, { l: 4, c: 4, typeId: 'te', rotation: 0 }],
+  });
+  assert.ok(!paire.ok);
+  if (!paire.ok) assert.match(paire.raison, /ne sont pas symétriques/);
+});
+
+test('symétrie : stock en nombres impairs expliqué (blocs posés par paires)', () => {
+  const impair = appliquerStock(blocs, 'vide=1,droit=1,coude=1,te=1,croix=1,rampe=1,impasse=1,coude_decale=1,double_coude_decale=1');
+  const r = generer(impair, { lignes: 3, colonnes: 3, symetrie: 'centrale' });
+  assert.ok(!r.ok);
+  if (!r.ok) assert.match(r.raison, /par paires/);
 });

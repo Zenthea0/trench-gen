@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import type { PointerEvent as EvtPointeur, ReactNode } from 'react';
-import type { BlocDef, NomCote } from '../types.js';
+import type { BlocDef, NomCote, Symetrie } from '../types.js';
 import type { Grille } from '../generateur.js';
 import { cleCase, nomColonne } from '../cases.js';
 
@@ -20,6 +20,8 @@ export const COULEURS = {
   grille: 'rgba(60,45,30,0.28)',
   accent: '#d9480f',
   conflit: '#c92a2a',
+  /** Repère de symétrie (axe ou centre) : bleu, pour ne pas le confondre avec la sélection. */
+  guide: '#1c7ed6',
 };
 
 const LARGEUR_REBORD = 48;
@@ -172,6 +174,10 @@ export interface PropsGrille {
   selection?: ReadonlySet<string>;
   /** Cases en conflit avec une règle de gestion active. */
   conflits?: ReadonlySet<string>;
+  /** Symétriques des cases sélectionnées : conservés eux aussi à la régénération (cadre pointillé). */
+  fantomes?: ReadonlySet<string>;
+  /** Symétrie active : dessine le centre ou l'axe de symétrie sur la carte. */
+  symetrie?: Symetrie;
   /** Toucher bref. `multi` vaut true avec Ctrl, Cmd ou Maj enfoncé (ordinateur). */
   onTap?: (l: number, c: number, multi: boolean) => void;
   /** Appui long : active la sélection multiple. */
@@ -193,7 +199,19 @@ interface Appui {
 }
 
 /** La carte complète : cases, quadrillage, repères (A–F / 1–6), sélection, cadenas et conflits. */
-export function GrilleSvg({ grille, blocs, quadrillage = true, selection, conflits, onTap, onLongPress, tailleMinCase = 46, id }: PropsGrille) {
+export function GrilleSvg({
+  grille,
+  blocs,
+  quadrillage = true,
+  selection,
+  conflits,
+  fantomes,
+  symetrie = 'aucune',
+  onTap,
+  onLongPress,
+  tailleMinCase = 46,
+  id,
+}: PropsGrille) {
   const L = grille.length;
   const C = grille[0]?.length ?? 0;
   const parId = new Map(blocs.map((b) => [b.id, b]));
@@ -307,6 +325,33 @@ export function GrilleSvg({ grille, blocs, quadrillage = true, selection, confli
       )}
       <rect x={MARGE} y={MARGE} width={C * 100} height={L * 100} fill="none" stroke="#3b2d20" strokeWidth="4" />
 
+      {/* Repère de symétrie : ligne bleue pointillée (axe Est–Ouest) ou cible bleue (centre) */}
+      {symetrie === 'axiale' && (
+        <line
+          data-ui="1"
+          data-guide="axe"
+          x1={MARGE - 12}
+          x2={MARGE + C * 100 + 12}
+          y1={MARGE + L * 50}
+          y2={MARGE + L * 50}
+          stroke={COULEURS.guide}
+          strokeWidth="5"
+          strokeDasharray="16 9"
+          pointerEvents="none"
+        />
+      )}
+      {symetrie === 'centrale' && (
+        <g data-ui="1" data-guide="centre" pointerEvents="none">
+          <circle cx={MARGE + C * 50} cy={MARGE + L * 50} r="15" fill="#fff" fillOpacity="0.85" stroke={COULEURS.guide} strokeWidth="5" />
+          <path
+            d={`M${MARGE + C * 50 - 8} ${MARGE + L * 50 - 8} l16 16 M${MARGE + C * 50 + 8} ${MARGE + L * 50 - 8} l-16 16`}
+            stroke={COULEURS.guide}
+            strokeWidth="4.5"
+            strokeLinecap="round"
+          />
+        </g>
+      )}
+
       {/* Cases en conflit : cadre rouge pointillé */}
       {conflits &&
         [...conflits].map((k) => {
@@ -338,6 +383,33 @@ export function GrilleSvg({ grille, blocs, quadrillage = true, selection, confli
             <g key={`s${k}`} data-ui="1" data-selection={k} pointerEvents="none">
               <rect x={x + 3} y={y + 3} width="94" height="94" rx="4" fill="rgba(217,72,15,0.12)" stroke={COULEURS.accent} strokeWidth="5" />
               <g transform={`translate(${x + 64} ${y + 8})`}>
+                <circle cx="14" cy="14" r="14" fill={COULEURS.accent} />
+                <rect x="7.5" y="13" width="13" height="9.5" rx="2" fill="#fff" />
+                <path d="M10 13 v-3.5 a4 4 0 0 1 8 0 V13" fill="none" stroke="#fff" strokeWidth="2.4" />
+              </g>
+            </g>
+          );
+        })}
+
+      {/* Symétriques des cases sélectionnées : cadre pointillé atténué et cadenas pâle */}
+      {fantomes &&
+        [...fantomes].map((k) => {
+          const [x, y] = position(k);
+          return (
+            <g key={`f${k}`} data-ui="1" data-fantome={k} pointerEvents="none">
+              <rect
+                x={x + 3}
+                y={y + 3}
+                width="94"
+                height="94"
+                rx="4"
+                fill="rgba(217,72,15,0.06)"
+                stroke={COULEURS.accent}
+                strokeOpacity="0.6"
+                strokeWidth="5"
+                strokeDasharray="10 7"
+              />
+              <g transform={`translate(${x + 64} ${y + 8})`} opacity="0.6">
                 <circle cx="14" cy="14" r="14" fill={COULEURS.accent} />
                 <rect x="7.5" y="13" width="13" height="9.5" rx="2" fill="#fff" />
                 <path d="M10 13 v-3.5 a4 4 0 0 1 8 0 V13" fill="none" stroke="#fff" strokeWidth="2.4" />
