@@ -17,7 +17,7 @@ interface Scenario {
   lignes: number;
   colonnes: number;
   sortieBord: boolean;
-  unSeulReseau: boolean;
+  nbReseaux: number | null;
   stock: 'defaut' | 'large';
   symetrie: Symetrie;
 }
@@ -25,27 +25,27 @@ interface Scenario {
 const scenarios: Scenario[] = [];
 for (const [l, c] of [[4, 4], [6, 6], [8, 8], [10, 10]] as const) {
   for (const sortieBord of [true, false]) {
-    for (const unSeulReseau of [true, false]) {
+    for (const nbReseaux of [1, 3, null]) {
       scenarios.push({
-        nom: `${l}×${c} bord:${sortieBord ? 'oui' : 'non'} réseau:${unSeulReseau ? 'un' : 'plusieurs'}`,
+        nom: `${l}×${c} bord:${sortieBord ? 'oui' : 'non'} réseau:${nbReseaux ?? 'libre'}`,
         lignes: l,
         colonnes: c,
         sortieBord,
-        unSeulReseau,
+        nbReseaux,
         stock: 'large',
         symetrie: 'aucune',
       });
     }
   }
 }
-scenarios.push({ nom: '6×6 stock par défaut bord:oui réseau:un', lignes: 6, colonnes: 6, sortieBord: true, unSeulReseau: true, stock: 'defaut', symetrie: 'aucune' });
-scenarios.push({ nom: '6×6 stock par défaut bord:non réseau:un', lignes: 6, colonnes: 6, sortieBord: false, unSeulReseau: true, stock: 'defaut', symetrie: 'aucune' });
+scenarios.push({ nom: '6×6 stock par défaut bord:oui réseau:un', lignes: 6, colonnes: 6, sortieBord: true, nbReseaux: 1, stock: 'defaut', symetrie: 'aucune' });
+scenarios.push({ nom: '6×6 stock par défaut bord:non réseau:un', lignes: 6, colonnes: 6, sortieBord: false, nbReseaux: 1, stock: 'defaut', symetrie: 'aucune' });
 
 for (const symetrie of ['centrale', 'axiale'] as const) {
   for (const [l, c] of [[5, 5], [6, 6], [5, 6], [6, 5], [8, 8]] as const) {
-    scenarios.push({ nom: `${l}×${c} symétrie ${symetrie}`, lignes: l, colonnes: c, sortieBord: true, unSeulReseau: true, stock: 'large', symetrie });
+    scenarios.push({ nom: `${l}×${c} symétrie ${symetrie}`, lignes: l, colonnes: c, sortieBord: true, nbReseaux: 1, stock: 'large', symetrie });
   }
-  scenarios.push({ nom: `6×6 symétrie ${symetrie} stock par défaut bord:non`, lignes: 6, colonnes: 6, sortieBord: false, unSeulReseau: true, stock: 'defaut', symetrie });
+  scenarios.push({ nom: `6×6 symétrie ${symetrie} stock par défaut bord:non`, lignes: 6, colonnes: 6, sortieBord: false, nbReseaux: 1, stock: 'defaut', symetrie });
 }
 
 const base = chargerBlocs();
@@ -63,7 +63,7 @@ for (const s of scenarios) {
     lignes: s.lignes,
     colonnes: s.colonnes,
     sortieBord: s.sortieBord,
-    unSeulReseau: s.unSeulReseau,
+    nbReseaux: s.nbReseaux,
     symetrie: s.symetrie,
     tempsMaxMs: 1000,
   };

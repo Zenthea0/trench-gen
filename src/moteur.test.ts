@@ -31,15 +31,15 @@ test('validation : bloc incohérent refusé', () => {
 
 test('génération : 200 graines × 4 combinaisons de paramètres, toutes valides', () => {
   for (const sortieBord of [true, false]) {
-    for (const unSeulReseau of [true, false]) {
-      const options: Options = { ...OPTIONS_DEFAUT, sortieBord, unSeulReseau, tempsMaxMs: 3000 };
+    for (const nbReseaux of [1, null]) {
+      const options: Options = { ...OPTIONS_DEFAUT, sortieBord, nbReseaux, tempsMaxMs: 3000 };
       for (let graine = 1; graine <= 50; graine++) {
         const r = generer(blocs, { ...options, graine });
-        assert.ok(r.ok, `échec graine ${graine} (bord=${sortieBord}, un=${unSeulReseau}) : ${r.ok ? '' : r.raison}`);
+        assert.ok(r.ok, `échec graine ${graine} (bord=${sortieBord}, reseaux=${nbReseaux}) : ${r.ok ? '' : r.raison}`);
         if (r.ok) {
           const rap = verifier(r.grille, blocs, options);
           assert.deepEqual(rap.erreurs, [], `graine ${graine}`);
-          if (unSeulReseau) assert.ok(rap.reseaux <= 1);
+          if (nbReseaux === 1) assert.ok(rap.reseaux <= 1);
         }
       }
     }
@@ -72,7 +72,7 @@ test('le vérificateur détecte une grille invalide', () => {
     [{ typeId: 'droit', rotation: 0 }, { typeId: 'vide', rotation: 0 }],
     [{ typeId: 'vide', rotation: 0 }, { typeId: 'vide', rotation: 0 }],
   ];
-  const rap = verifier(grille, blocs, { lignes: 2, colonnes: 2, sortieBord: false, unSeulReseau: true });
+  const rap = verifier(grille, blocs, { lignes: 2, colonnes: 2, sortieBord: false, nbReseaux: 1 });
   assert.ok(rap.erreurs.length > 0);
 });
 
@@ -97,7 +97,7 @@ test('réseau fermé : détecté par le vérificateur, et seulement quand la rè
     [{ typeId: 'coude', rotation: 3 }, { typeId: 'coude', rotation: 0 }],
     [{ typeId: 'coude', rotation: 2 }, { typeId: 'coude', rotation: 1 }],
   ];
-  const base = { lignes: 2, colonnes: 2, sortieBord: false, unSeulReseau: true };
+  const base = { lignes: 2, colonnes: 2, sortieBord: false, nbReseaux: 1 };
   assert.deepEqual(verifier(boucle, blocs, { ...base, exigerSortie: false }).erreurs, []);
   const avec = verifier(boucle, blocs, { ...base, exigerSortie: true });
   assert.equal(avec.erreurs.length, 1);
@@ -177,7 +177,7 @@ test('symétrie : centrale et axiale, toutes parités de tailles, toujours valid
 
 test('symétrie : la rupture est signalée avec les blocs concernés', () => {
   const vide = { typeId: 'vide', rotation: 0 };
-  const opts = { lignes: 2, colonnes: 2, sortieBord: true, unSeulReseau: false, symetrie: 'centrale' as const };
+  const opts = { lignes: 2, colonnes: 2, sortieBord: true, nbReseaux: null, symetrie: 'centrale' as const };
   // Un droit en A1, rien en B2 : les deux blocs ne sont pas symétriques.
   const rompue = verifier([[{ typeId: 'droit', rotation: 0 }, vide], [vide, vide]], blocs, opts);
   const msg = rompue.conflits.find((c) => /Symétrie rompue/.test(c.message));
@@ -190,7 +190,7 @@ test('symétrie : la rupture est signalée avec les blocs concernés', () => {
   const axe = verifier(
     [[vide], [{ typeId: 'coude', rotation: 0 }], [vide]],
     blocs,
-    { lignes: 3, colonnes: 1, sortieBord: true, unSeulReseau: false, symetrie: 'axiale' },
+    { lignes: 3, colonnes: 1, sortieBord: true, nbReseaux: null, symetrie: 'axiale' },
   );
   assert.ok(axe.conflits.some((c) => /sur l'axe de symétrie/.test(c.message)));
 });
@@ -234,4 +234,29 @@ test('symétrie : stock en nombres impairs expliqué (blocs posés par paires)',
   const r = generer(impair, { lignes: 3, colonnes: 3, symetrie: 'centrale' });
   assert.ok(!r.ok);
   if (!r.ok) assert.match(r.raison, /par paires/);
+});
+
+test('nombre de réseaux : exactement N, de 1 à 4, avec ou sans symétrie', () => {
+  const gros = blocs.map((b) => ({ ...b, quantite: b.quantite * 4 }));
+  for (const symetrie of ['aucune', 'centrale', 'axiale'] as const) {
+    for (const nbReseaux of [1, 2, 3, 4]) {
+      for (let graine = 1; graine <= 4; graine++) {
+        const options = { ...OPTIONS_DEFAUT, lignes: 6, colonnes: 6, nbReseaux, symetrie, graine, tempsMaxMs: 6000 };
+        const r = generer(gros, options);
+        assert.ok(r.ok, `échec ${nbReseaux} réseaux, ${symetrie}, graine ${graine} : ${r.ok ? '' : r.raison}`);
+        if (!r.ok) continue;
+        const rap = verifier(r.grille, gros, options);
+        assert.deepEqual(rap.erreurs, []);
+        assert.equal(rap.reseaux, nbReseaux);
+      }
+    }
+  }
+});
+
+test('nombre de réseaux : le vérificateur signale un écart, une valeur invalide est refusée', () => {
+  const vide = { typeId: 'vide', rotation: 0 };
+  const rap = verifier([[vide, vide], [vide, vide]], blocs, { lignes: 2, colonnes: 2, sortieBord: true, nbReseaux: 3, exigerSortie: false });
+  assert.ok(rap.conflits.some((c) => /0 réseau de tranchées alors que 3 sont demandés/.test(c.message)), rap.erreurs.join(' | '));
+  assert.equal(generer(blocs, { ...OPTIONS_DEFAUT, nbReseaux: 7 }).ok, false);
+  assert.equal(generer(blocs, { ...OPTIONS_DEFAUT, nbReseaux: 0 }).ok, false);
 });

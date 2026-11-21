@@ -5,7 +5,7 @@ Application web (PWA) qui génère des réseaux de tranchées **cohérents** à 
 ## Utilisation
 
 - **Blocs** : saisir le nombre d'exemplaires possédés pour chaque type de bloc (enregistré sur l'appareil).
-- **Réglages** : taille de la table, tranchées ouvertes ou non sur le bord, un seul réseau ou plusieurs.
+- **Réglages** : taille de la table, tranchées ouvertes ou non sur le bord, nombre de réseaux de tranchées (libre, ou exactement 1 à 6).
 - **Carte** : génère et affiche la carte. La liste « Blocs à sortir de la boîte » donne le décompte par type. Le bouton d'export produit une image PNG.
 
 ### Sélectionner et modifier des blocs
@@ -23,7 +23,7 @@ Toujours appliquées :
 
 Réglables (onglet Réglages) :
 - **Tranchées ouvertes sur le bord** de la table (autorisé par défaut).
-- **Un seul réseau** de tranchées (par défaut), ou plusieurs.
+- **Nombre de réseaux** : *Nombre libre* (aucune exigence) ou *Nombre imposé*, de 1 à 6 (par défaut 1). « Imposé » signifie exactement N réseaux, un réseau étant un ensemble de tranchées reliées entre elles. Si ce nombre est impossible avec le stock et les règles, l'application l'indique. En ligne de commande : `--reseaux libre|1..6`. D'anciens réglages enregistrés sont repris : « un seul réseau » devient « imposé : 1 », « plusieurs » devient « libre ».
 - **Aucune tranchée fermée** (par défaut) : chaque réseau a au moins une rampe de sortie ou, si c'est autorisé, une ouverture sur le bord de la table. L'impasse ne compte pas comme sortie.
 
 ### Symétrie de la table

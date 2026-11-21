@@ -11,7 +11,7 @@ const AIDE = `Usage : npm run generer -- [options]
   --colonnes N       nombre de colonnes (défaut ${OPTIONS_DEFAUT.colonnes})
   --graine N         graine aléatoire (défaut ${OPTIONS_DEFAUT.graine})
   --bord oui|non     une tranchée peut-elle sortir sur le bord de table ? (défaut oui)
-  --reseaux un|plusieurs   un seul réseau connexe ou plusieurs (défaut un)
+  --reseaux libre|1..6     nombre exact de réseaux de tranchées, ou libre (défaut 1)
   --symetrie aucune|centrale|axiale   symétrie de la table : demi-tour, ou miroir haut/bas (défaut aucune)
   --sortie-requise oui|non  chaque réseau doit avoir une rampe ou une ouverture sur le bord (défaut oui)
   --densite 0..1    tendance à poser des tranchées plutôt que des blocs plats (défaut ${OPTIONS_DEFAUT.densite})
@@ -56,6 +56,15 @@ export function appliquerStock(blocs: BlocDef[], spec: string): BlocDef[] {
   return blocs.map((b) => (surcharge.has(b.id) ? { ...b, quantite: surcharge.get(b.id)! } : b));
 }
 
+/** « libre » (ou « plusieurs ») = aucune exigence ; sinon un entier de 1 à 6 (« un » = 1). */
+function lireReseaux(v: unknown): number | null {
+  if (v === undefined || v === 'un') return 1;
+  if (v === 'libre' || v === 'plusieurs') return null;
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 1 || n > 6) throw new Error('--reseaux : « libre » ou un entier de 1 à 6.');
+  return n;
+}
+
 function principal() {
   const args = lireArgs(process.argv.slice(2));
   if (args.help || args.h) {
@@ -71,7 +80,7 @@ function principal() {
     tempsMaxMs: num('temps', OPTIONS_DEFAUT.tempsMaxMs),
     minBlocsTranchee: num('min-tranchee', 0),
     sortieBord: args.bord !== 'non',
-    unSeulReseau: args.reseaux !== 'plusieurs',
+    nbReseaux: lireReseaux(args.reseaux),
     exigerSortie: args['sortie-requise'] !== 'non',
     symetrie: args.symetrie === 'centrale' || args.symetrie === 'axiale' ? args.symetrie : 'aucune',
   };

@@ -15,8 +15,8 @@ export interface Options {
   colonnes: number;
   /** Une tranchée peut-elle déboucher sur le bord de la table ? */
   sortieBord: boolean;
-  /** true = un seul réseau connexe ; false = plusieurs réseaux acceptés. */
-  unSeulReseau: boolean;
+  /** Nombre exact de réseaux de tranchées (1 à 6), ou null = aucune exigence (nombre libre). */
+  nbReseaux: number | null;
   /**
    * true = aucun réseau de tranchées ne peut être complètement fermé : chacun doit avoir
    * au moins une rampe de sortie ou, si c'est autorisé, une ouverture sur le bord de la table.
@@ -45,7 +45,7 @@ export const OPTIONS_DEFAUT: Options = {
   lignes: 6,
   colonnes: 6,
   sortieBord: true,
-  unSeulReseau: true,
+  nbReseaux: 1,
   exigerSortie: true,
   symetrie: 'aucune',
   densite: 0.6,
@@ -110,6 +110,10 @@ export function generer(blocs: BlocDef[], options: Partial<Options> = {}): Resul
 
   if (!Number.isInteger(o.lignes) || !Number.isInteger(o.colonnes) || o.lignes < 1 || o.colonnes < 1) {
     return echec('Dimensions de table invalides.');
+  }
+
+  if (o.nbReseaux !== null && (!Number.isInteger(o.nbReseaux) || o.nbReseaux < 1 || o.nbReseaux > 6)) {
+    return echec('Le nombre de réseaux doit être compris entre 1 et 6, ou laissé libre.');
   }
 
   const { variantes, types } = construireVariantes(blocs);
@@ -401,12 +405,13 @@ export function generer(blocs: BlocDef[], options: Partial<Options> = {}): Resul
     return cles.map((x) => x.vi);
   };
 
-  const surveiller = o.unSeulReseau || o.exigerSortie;
+  const N = o.nbReseaux;
+  const surveiller = N !== null || o.exigerSortie;
 
   const rec = (): Code => {
     if (assignes === n) {
       const r = analyserReseaux();
-      if (o.unSeulReseau && r.total > 1) return 'epuise';
+      if (N !== null && r.total !== N) return 'epuise';
       // Toute la table est posée : tous les réseaux sont terminés, chacun doit avoir sa sortie.
       if (o.exigerSortie && r.fermesSansSortie > 0) return 'epuise';
       if (nbCasesTranchee() < o.minBlocsTranchee) return 'epuise';
@@ -419,8 +424,9 @@ export function generer(blocs: BlocDef[], options: Partial<Options> = {}): Resul
 
     if (surveiller && assignes > 0) {
       const r = analyserReseaux();
-      // Un réseau fermé ne peut plus grandir : s'il en existe un autre, c'est perdu.
-      if (o.unSeulReseau && r.total >= 2 && r.fermes >= 1) return 'epuise';
+      // Un réseau fermé ne peut plus ni grandir ni fusionner : il restera un réseau à part entière.
+      // Le nombre final de réseaux est donc au moins « fermés + 1 s'il reste un réseau ouvert ».
+      if (N !== null && r.fermes + (r.total > r.fermes ? 1 : 0) > N) return 'epuise';
       // Un réseau fermé sans rampe ni ouverture sur le bord ne pourra jamais en avoir.
       if (o.exigerSortie && r.fermesSansSortie >= 1) return 'epuise';
     }
@@ -496,7 +502,9 @@ export function generer(blocs: BlocDef[], options: Partial<Options> = {}): Resul
       return echec(
         fixesOrig.size > 0
           ? 'Aucune configuration possible avec les blocs figés et ces règles.'
-          : 'Aucune configuration possible avec ces paramètres (stock et règles).',
+          : N !== null && N > 1
+            ? `Aucune configuration possible avec ${N} réseaux et ces paramètres (stock et règles). Essayez un autre nombre de réseaux.`
+            : 'Aucune configuration possible avec ces paramètres (stock et règles).',
       );
     }
   }

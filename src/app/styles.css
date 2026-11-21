@@ -412,7 +412,8 @@ input:focus-visible {
   padding: 12px;
   border-bottom: 1px solid var(--ligne);
 }
-.options-symetrie button {
+.options-symetrie button,
+.options-choix button {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -426,13 +427,15 @@ input:focus-visible {
   color: var(--terre);
   cursor: pointer;
 }
-.options-symetrie button .texte {
+.options-symetrie button .texte,
+.options-choix button .texte {
   color: var(--encre);
 }
 .options-symetrie button svg {
   flex: none;
 }
-.options-symetrie button[aria-checked='true'] {
+.options-symetrie button[aria-checked='true'],
+.options-choix button[aria-checked='true'] {
   background: #fff4ec;
   border-left-color: var(--accent);
 }

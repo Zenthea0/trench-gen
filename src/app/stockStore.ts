@@ -8,7 +8,8 @@ export interface Reglages {
   lignes: number;
   colonnes: number;
   sortieBord: boolean;
-  unSeulReseau: boolean;
+  /** Nombre exact de réseaux de tranchées (1 à 6), ou null = nombre libre. */
+  nbReseaux: number | null;
   /** Aucune tranchée complètement fermée : chaque réseau a une rampe ou une ouverture sur le bord. */
   exigerSortie: boolean;
   /** Une seule symétrie à la fois : aucune, centrale (demi-tour) ou axiale (miroir haut/bas). */
@@ -28,7 +29,7 @@ export const REGLAGES_DEFAUT: Reglages = {
   lignes: 6,
   colonnes: 6,
   sortieBord: true,
-  unSeulReseau: true,
+  nbReseaux: 1,
   exigerSortie: true,
   symetrie: 'aucune',
   quadrillage: true,
@@ -51,12 +52,22 @@ export function charger(): Etat {
       // Tant que l'utilisateur n'a rien saisi, les quantités d'exemple suivent les mises à jour.
       // Les types de blocs ajoutés plus tard dans blocs.json reprennent leur quantité par défaut.
       quantites: personnalise ? { ...defaut.quantites, ...(lu.quantites ?? {}) } : defaut.quantites,
-      reglages: { ...REGLAGES_DEFAUT, ...(lu.reglages ?? {}) },
+      reglages: migrerReglages(lu.reglages),
       personnalise,
     };
   } catch {
     return defaut;
   }
+}
+
+/** Reprend les réglages enregistrés ; l'ancien interrupteur « Un seul réseau » devient « nombre imposé : 1 » ou « libre ». */
+function migrerReglages(lus: Partial<Reglages> | undefined): Reglages {
+  const { unSeulReseau, ...reste } = (lus ?? {}) as Partial<Reglages> & { unSeulReseau?: boolean };
+  const fusion: Reglages = { ...REGLAGES_DEFAUT, ...reste };
+  if (!('nbReseaux' in reste) && typeof unSeulReseau === 'boolean') fusion.nbReseaux = unSeulReseau ? 1 : null;
+  const n = fusion.nbReseaux;
+  if (n !== null && !(Number.isInteger(n) && n >= 1 && n <= 6)) fusion.nbReseaux = REGLAGES_DEFAUT.nbReseaux;
+  return fusion;
 }
 
 export function sauver(etat: Etat): void {

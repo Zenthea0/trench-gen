@@ -88,6 +88,45 @@ function Interrupteur(props: { actif: boolean; onChange: (v: boolean) => void; t
   );
 }
 
+/** Nombre de réseaux : libre, ou exactement N (1 à 6). Un réseau = des tranchées reliées entre elles. */
+function SelecteurReseaux(props: { valeur: number | null; onChange: (v: number | null) => void }) {
+  const dernier = useRef(props.valeur ?? 1);
+  if (props.valeur !== null) dernier.current = props.valeur;
+  const n = props.valeur;
+  const impose = n !== null;
+  return (
+    <div className="groupe">
+      <div className="symetrie-titre" id="titre-reseaux">
+        <strong>Nombre de réseaux de tranchées</strong>
+        <small>Un réseau est un ensemble de tranchées reliées entre elles.</small>
+      </div>
+      <div className="options-choix" role="radiogroup" aria-labelledby="titre-reseaux">
+        <button type="button" role="radio" aria-checked={!impose} data-reseaux="libre" onClick={() => props.onChange(null)}>
+          <span className="texte">
+            <strong>Nombre libre</strong>
+            <small>Aucune exigence : la carte peut avoir un ou plusieurs réseaux.</small>
+          </span>
+        </button>
+        <button type="button" role="radio" aria-checked={impose} data-reseaux="impose" onClick={() => props.onChange(dernier.current)}>
+          <span className="texte">
+            <strong>Nombre imposé</strong>
+            <small>La carte a exactement le nombre de réseaux choisi, de 1 à 6.</small>
+          </span>
+        </button>
+      </div>
+      {n !== null && (
+        <div className="ligne-reglage">
+          <span className="texte">
+            <strong>Nombre de réseaux</strong>
+            <small>{n === 1 ? 'Toutes les tranchées sont reliées entre elles.' : `${n} réseaux séparés.`}</small>
+          </span>
+          <Stepper valeur={n} min={1} max={6} etiquette="nombre de réseaux" onChange={(v) => props.onChange(v)} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 const OPTIONS_SYMETRIE: { id: Symetrie; titre: string; aide: string }[] = [
   { id: 'aucune', titre: 'Aucune symétrie', aide: 'La carte est entièrement libre.' },
   {
@@ -220,7 +259,7 @@ export default function App() {
     reglages.lignes,
     reglages.colonnes,
     reglages.sortieBord,
-    reglages.unSeulReseau,
+    reglages.nbReseaux,
     reglages.exigerSortie,
     reglages.symetrie,
     quantites,
@@ -265,7 +304,7 @@ export default function App() {
     setEnCours(true);
     setErreur(null);
     const graine = Math.floor(Math.random() * 2147483647);
-    const { lignes, colonnes, sortieBord, unSeulReseau, exigerSortie, symetrie } = reglages;
+    const { lignes, colonnes, sortieBord, nbReseaux, exigerSortie, symetrie } = reglages;
 
     // Les cases sélectionnées sont imposées au générateur : elles gardent type et orientation.
     const memeTable = generation !== null && generation.lignes === lignes && generation.colonnes === colonnes;
@@ -296,7 +335,7 @@ export default function App() {
     };
     w.postMessage({
       blocs,
-      options: { lignes, colonnes, sortieBord, unSeulReseau, exigerSortie, symetrie, fixes, graine, tempsMaxMs: 4000 },
+      options: { lignes, colonnes, sortieBord, nbReseaux, exigerSortie, symetrie, fixes, graine, tempsMaxMs: 4000 },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [blocs, reglages, cleCourante, generation, selection]);
@@ -318,12 +357,12 @@ export default function App() {
             lignes: generation.lignes,
             colonnes: generation.colonnes,
             sortieBord: reglages.sortieBord,
-            unSeulReseau: reglages.unSeulReseau,
+            nbReseaux: reglages.nbReseaux,
             exigerSortie: reglages.exigerSortie,
             symetrie: reglages.symetrie,
           })
         : null,
-    [generation, blocs, reglages.sortieBord, reglages.unSeulReseau, reglages.exigerSortie, reglages.symetrie],
+    [generation, blocs, reglages.sortieBord, reglages.nbReseaux, reglages.exigerSortie, reglages.symetrie],
   );
   const casesEnConflit = useMemo(
     () => new Set((rapport?.conflits ?? []).flatMap((c) => c.cases.map(([l, col]) => cleCase(l, col)))),
@@ -654,18 +693,14 @@ export default function App() {
               colonnes={reglages.colonnes}
             />
 
+            <SelecteurReseaux valeur={reglages.nbReseaux} onChange={(v) => majReglages({ nbReseaux: v })} />
+
             <div className="groupe">
               <Interrupteur
                 actif={reglages.sortieBord}
                 onChange={(v) => majReglages({ sortieBord: v })}
                 titre="Tranchées ouvertes sur le bord"
                 aide="Une tranchée peut déboucher sur le bord de la table."
-              />
-              <Interrupteur
-                actif={reglages.unSeulReseau}
-                onChange={(v) => majReglages({ unSeulReseau: v })}
-                titre="Un seul réseau"
-                aide="Toutes les tranchées sont reliées entre elles. Sinon, plusieurs réseaux séparés sont acceptés."
               />
               <Interrupteur
                 actif={reglages.exigerSortie}

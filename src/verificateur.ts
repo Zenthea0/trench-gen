@@ -47,7 +47,7 @@ export interface Rapport {
 export function verifier(
   grille: Grille,
   blocs: BlocDef[],
-  options: Pick<Options, 'lignes' | 'colonnes' | 'sortieBord' | 'unSeulReseau'> & Partial<Options>,
+  options: Pick<Options, 'lignes' | 'colonnes' | 'sortieBord' | 'nbReseaux'> & Partial<Options>,
 ): Rapport {
   const conflits: Conflit[] = [];
   const ajouter = (message: string, cases: [number, number][]) => conflits.push({ message, cases });
@@ -186,12 +186,18 @@ export function verifier(
   };
   const reseaux = composantes.length;
 
-  if (options.unSeulReseau && reseaux > 1) {
-    // On met en évidence tout sauf le plus grand réseau.
-    const tailles = composantes.map((m) => casesDe(m).length);
-    const principal = tailles.indexOf(Math.max(...tailles));
-    const autres = composantes.filter((_, i) => i !== principal).flatMap(casesDe);
-    ajouter(`La carte contient ${reseaux} réseaux de tranchées séparés alors qu'un seul est demandé.`, autres);
+  const voulu = options.nbReseaux;
+  if (voulu !== null && voulu !== undefined && reseaux !== voulu) {
+    const pluriel = (n: number) => `${n} réseau${n > 1 ? 'x' : ''}`;
+    const demande = voulu === 1 ? "alors qu'un seul est demandé" : `alors que ${voulu} sont demandés`;
+    // Trop de réseaux : on met en évidence tous ceux qui dépassent les plus grands. Pas assez : rien à surligner.
+    let autres: [number, number][] = [];
+    if (reseaux > voulu) {
+      const ordre = composantes.map((m, i) => ({ i, t: casesDe(m).length })).sort((a, b) => b.t - a.t);
+      const gardes = new Set(ordre.slice(0, voulu).map((x) => x.i));
+      autres = composantes.filter((_, i) => !gardes.has(i)).flatMap(casesDe);
+    }
+    ajouter(`La carte contient ${pluriel(reseaux)} de tranchées ${demande}.`, autres);
   }
 
   if (options.exigerSortie === true) {
